@@ -18,7 +18,7 @@ object Form1: TForm1
     Position.X = 240.000000000000000000
     Position.Y = 136.000000000000000000
     TabOrder = 0
-    Text = 'LED On'
+    Text = 'RESn High'
     Width = 129.000000000000000000
     OnClick = Button1Click
   end
@@ -27,7 +27,7 @@ object Form1: TForm1
     Position.X = 240.000000000000000000
     Position.Y = 176.000000000000000000
     TabOrder = 1
-    Text = 'LED Off'
+    Text = 'RESn Low'
     Width = 129.000000000000000000
     OnClick = Button2Click
   end
