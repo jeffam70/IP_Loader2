@@ -28,6 +28,22 @@ type
 var
   Form1: TForm1;
 
+const
+  {Network Header Metrics}
+  RemoteCommand  = $02;
+  RequestNoACK   = $00;
+  RequestACK     = $02;
+  {Command Metrics}
+  FrameID        = $01;
+  QueueCommand   = $00;
+  ApplyCommand   = $02;
+  DigitalOutLow  = $04;
+  DigitalOutHigh = $05;
+
+  {Network Header}
+  NetHeader : array[0..7] of byte = ( $42, $42, $00, $00, $00, $00, RemoteCommand, RequestNoACK );
+
+
 implementation
 
 {$R *.fmx}
@@ -36,38 +52,26 @@ procedure TForm1.Button1Click(Sender: TObject);
 var
   Buffer : TIdBytes;
 const
-  LEDOn : array[0..12] of byte = ( $42, $42, $00, $00, $00, $00, $02, $00, $01, $02, $44, $32, $05 );
+  LEDOn : array[0..4] of byte = ( FrameID, ApplyCommand, Byte('D'), Byte('2'), DigitalOutHigh );
 begin
-  SetLength(Buffer, Length(LEDOn));
-  Move(LEDOn[0], Buffer[0], Length(LEDOn));
+  SetLength(Buffer, Length(NetHeader)+Length(LEDOn));
+  Move(NetHeader[0], Buffer[0], Length(NetHeader));
+  Move(LEDOn[0], Buffer[Length(NetHeader)], Length(LEDOn));
   UDPClient.SendBuffer(IPAddr.Text, $BEE, Buffer);
   SetLength(Buffer, 0);
 end;
 
 procedure TForm1.Button2Click(Sender: TObject);
 var
-  LEDOff : TIdBytes;
+  Buffer : TIdBytes;
+const
+  LEDOff : array[0..4] of byte = ( FrameID, ApplyCommand, Byte('D'), Byte('2'), DigitalOutLow );
 begin
-  SetLength(LEDOff, 13);
-  LEDOff[00] := $42;
-  LEDOff[01] := $42;
-  LEDOff[02] := $00;
-  LEDOff[03] := $00;
-  LEDOff[04] := $00;
-  LEDOff[05] := $00;
-  LEDOff[06] := $02;
-  LEDOff[07] := $00;
-  LEDOff[08] := $01;
-  LEDOff[09] := $02;
-  LEDOff[10] := $44;
-  LEDOff[11] := $32;
-  LEDOff[12] := $04;
-
-//  Buffer[0] := Byte($42);
-//  strpcopy(Buffer[0], chr($42)+chr($42)+chr($00)+chr($00)+chr($00)+chr($02));
-  UDPClient.SendBuffer(IPAddr.Text, $BEE, LEDOff);
-
-  SetLength(LEDOff, 0);
+  SetLength(Buffer, Length(NetHeader)+Length(LEDOff));
+  Move(NetHeader[0], Buffer[0], Length(NetHeader));
+  Move(LEDOff[0], Buffer[Length(NetHeader)], Length(LEDOff));
+  UDPClient.SendBuffer(IPAddr.Text, $BEE, Buffer);
+  SetLength(Buffer, 0);
 end;
 
 end.
