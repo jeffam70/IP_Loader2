@@ -8,7 +8,7 @@ uses
   IdTCPClient, IdGlobal, FMX.Edit;
 
 type
-  udpCommand = (udpRESLow, udpRESHigh);
+  udpCommand = (udpRESLow, udpRESHigh, udpGetIP);
 
   TForm1 = class(TForm)
     TCPClient: TIdTCPClient;
@@ -19,8 +19,10 @@ type
     IPAddrLabel: TLabel;
     Port: TEdit;
     PortLabel: TLabel;
+    Button3: TButton;
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
+    procedure Button3Click(Sender: TObject);
   private
     { Private declarations }
     procedure PrepareBuffer(Command: udpCommand);
@@ -39,11 +41,13 @@ const
   RequestNoACK   = $00;
   RequestACK     = $02;
   {Command Metrics}
-  FrameID        = Byte($01);
+  FrameID        = $01;
   QueueCommand   = $00;
   ApplyCommand   = $02;
   DigitalOutLow  = $04;
   DigitalOutHigh = $05;
+  {End of packet marker}
+  NULL           = $00;
 
   {Network Header}
   NetHeader : array[0..7] of byte = ( $42, $42, $00, $00, $00, $00, RemoteCommand, RequestNoACK );
@@ -65,20 +69,27 @@ begin
   UDPClient.SendBuffer(IPAddr.Text, $BEE, Buffer);
 end;
 
+procedure TForm1.Button3Click(Sender: TObject);
+begin
+  PrepareBuffer(udpGetIP);
+  UDPClient.SendBuffer('192.168.1.255'{IPAddr.Text}, $BEE, Buffer);
+  UDPClient.ReceiveBuffer(Buffer, 2000);
+  IPAddr.Text := 'Hello';
+end;
+
 {------ Private ------}
 procedure TForm1.PrepareBuffer(Command: udpCommand);
 const
-  CmdStream : array[low(udpCommand)..high(udpCommand), 0..4] of byte =
+  CmdStream : array[low(udpCommand)..high(udpCommand), 0..5] of byte =
     (
-    {udpRESLow}  ( FrameID, ApplyCommand, Byte('D'), Byte('2'), DigitalOutLow ),
-    {udpRESHigh} ( FrameID, ApplyCommand, Byte('D'), Byte('2'), DigitalOutHigh )
+    {udpRESLow}  ( $05, FrameID, ApplyCommand, Byte('D'), Byte('2'), DigitalOutLow ),
+    {udpRESHigh} ( $05, FrameID, ApplyCommand, Byte('D'), Byte('2'), DigitalOutHigh ),
+    {udpGetIP}   ( $04, FrameID, ApplyCommand, Byte('M'), Byte('Y'), NULL )
     );
 begin
-  SetLength(Buffer, Length(NetHeader)+Length(CmdStream[Command]));
+  SetLength(Buffer, Length(NetHeader)+CmdStream[Command][0]);
   Move(NetHeader[0], Buffer[0], Length(NetHeader));
-  Move(CmdStream[Command][0], Buffer[Length(NetHeader)], Length(CmdStream[Command]));
-  UDPClient.SendBuffer(IPAddr.Text, $BEE, Buffer);
-  SetLength(Buffer, 0);
+  Move(CmdStream[Command][1], Buffer[Length(NetHeader)], CmdStream[Command][0]);
 end;
 
 end.
