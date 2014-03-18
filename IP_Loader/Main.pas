@@ -10,6 +10,40 @@ uses
 type
   udpCommand = (udpRESLow, udpRESHigh, udpGetIP, udpOutputMask, udpDIO2RPulse, udpDIO2Timer, udpApplyChanges);
 
+  {Define XBee Transmission Packet - the format of packets transmitted from networked host to XBee}
+  PxbTxPacket = ^TxbTxPacket;
+  TxbTxPacket = packed record
+    {Application Header}
+    Number1        : Word;
+    Number2        : Word;
+    PacketID       : Byte;
+    EncryptionPad  : Byte;
+    CommandID      : Byte;
+    CommandOptions : Byte;
+    {Command Data}
+    FrameID        : Byte;
+    ConfigOptions  : Byte;
+    ATCommand      : Word;
+    ParameterValue : Byte;
+  end;
+
+  {Define XBee Reception Packet - the format of packets transmitted from XBee to networked host}
+  PxbRxPacket = ^TxbRxPacket;
+  TxbRxPacket = packed record
+    {Application Header}
+    Number1        : Word;
+    Number2        : Word;
+    PacketID       : Byte;
+    EncryptionPad  : Byte;
+    CommandID      : Byte;
+    CommandOptions : Byte;
+    {Command Data}
+    FrameID        : Byte;
+    ATCommand      : Word;
+    Status         : Byte;
+    ParameterValue : Byte;
+  end;
+
   TForm1 = class(TForm)
     TCPClient: TIdTCPClient;
     UDPClient: TIdUDPClient;
@@ -37,8 +71,9 @@ type
 var
   Form1: TForm1;
   {IP Buffer}
-  TxBuf : TIdBytes;
-  RxBuf : TIdBytes;
+  TxBuf  : TIdBytes;                                          {Raw transmit packet (resized per packet)}
+  RxBuf  : TIdBytes;                                          {Raw receive packet stream (fixed size)}
+  PRxBuf : PxbRxPacket;                                       {Pointer to structured receive packet (shares memory space with RxBuf)}
 
 const
   {Network Header Metrics}
@@ -113,6 +148,8 @@ end;
 {----------------------------------------------------------------------------------------------------}
 
 procedure TForm1.PrepareBuffer(Command: udpCommand; RequestPacketAck: Boolean);
+//var
+//  X : PXBeeTxPacket;
 const
   CmdStream : array[low(udpCommand)..high(udpCommand), 0..6] of byte =
     (
@@ -128,6 +165,10 @@ begin
   SetLength(TxBuf, Length(NetHeader)+1+CmdStream[Command][0]);
   Move(NetHeader[0], TxBuf[0], Length(NetHeader));
   TxBuf[Length(NetHeader)] := RequestAckNack[RequestPacketAck];
+
+//  X := PXBeeTxPacket(@TxBuf[0]);
+//  X.Header.Number1 := X.Header.Number1 + 1;
+
   Move(CmdStream[Command][1], TxBuf[Length(NetHeader)+1], CmdStream[Command][0]);
 end;
 
@@ -137,22 +178,16 @@ function TForm1.SendUDP(Command: udpCommand; RequestPacketAck: Boolean = True; T
 {Create and send UDP packet, check and validate response (if any) and return True if successful and response in RxBuf;
  returns false otherwise.}
 var
-  IP : String;
+  IP    : String;
+  Count : Integer;
 
     {----------------}
 
-    function UDPPacketReceived: Boolean;
-    {Return true if UDP packet received}
-    begin
-      Result := RxBuf[0] shl 24 + RxBuf[1] shl 16 + RxBuf[2] shl 8 + RxBuf[3] <> 0;
-    end;
-
-    {----------------}
-
-    function UDPXBeeWiFiResponse: Boolean;
+    function IsXBeeResponse: Boolean;
     {Return true if UDP packet is an XBee Wi-Fi response packet}
     begin
-      Result := (RxBuf[0] shl 8 + RxBuf[1]) xor $4242 = (RxBuf[2] shl 8 + RxBuf[3]);
+      Result := PRxBuf.Number1 xor $4242 = PRxBuf.Number2;
+//      Result := (RxBuf[0] shl 8 + RxBuf[1]) xor $4242 = (RxBuf[2] shl 8 + RxBuf[3]);
     end;
 
     {----------------}
@@ -165,21 +200,18 @@ begin
   UDPClient.SendBuffer(IP, $BEE, TxBuf);
   if RequestPacketAck then
     begin
-    FillChar(RxBuf[0], Length(RxBuf), 0);
-    UDPClient.ReceiveBuffer(RxBuf, 2000);
-    if UDPPacketReceived and UDPXBeeWiFiResponse and                                         {XBee Wi-Fi UDP response packet received}
-      (RxBuf[4] = $55) and (RxBuf[5] = $01) and (RxBuf[6] = $80) then                        {and its status is good}
+//    FillChar(RxBuf[0], Length(RxBuf), 0);
+    Count := UDPClient.ReceiveBuffer(RxBuf, 2000);
+    if (Count > 0) and IsXBeeResponse and (PRxBuf.CommandID = $80) then        {Received XBee Wi-Fi UDP ACK packet}
       self.Caption := 'Ack received'
     else
       self.Caption := 'No ack';
     end;
   if Command in [udpGetIP] then
     begin
-    FillChar(RxBuf[0], Length(RxBuf), 0);
-    UDPClient.ReceiveBuffer(RxBuf, 6000);
-    FillChar(RxBuf[0], Length(RxBuf), 0);
-    UDPClient.ReceiveBuffer(RxBuf, 6000);
-    if UDPPacketReceived {and UDPXBeeWiFiResponse} then                                        {XBee Wi-Fi UDP response packet received}
+    Count := UDPClient.ReceiveBuffer(RxBuf, 6000);
+    Count := UDPClient.ReceiveBuffer(RxBuf, 6000);
+    if IsXBeeResponse then                                                     {XBee Wi-Fi UDP response packet received}
       self.Caption := self.Caption + ', Response received'
     else
       self.Caption := self.Caption + ', No response';
@@ -190,6 +222,7 @@ end;
 
 Initialization
   SetLength(RxBuf, 1500);
+  PRxBuf := PxbRxPacket(@RxBuf[0]);
 
 Finalization
   SetLength(RxBuf, 0);
