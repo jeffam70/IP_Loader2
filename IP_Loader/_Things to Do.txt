@@ -1,10 +1,9 @@
 * Add AT commands
   * to set baud rate
-  * to set low pulse time
   * to set initial RESn state?
   * to set transparent mode
   * More?
-* Enhance to request acknowledgements
+
 * Calculate round-trip time
 * Randomize header ID
 * Enhance to Identify
@@ -16,3 +15,9 @@
 * Add TCP
   * To connect
   * To transmit image
+
+
+Things Done:
+* Enhance to request acknowledgements
+* Add AT commands
+  * to set low pulse time

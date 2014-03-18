@@ -8,7 +8,7 @@ uses
   IdTCPClient, IdGlobal, FMX.Edit;
 
 type
-  udpCommand = (udpRESLow, udpRESHigh, udpGetIP, udpOutputMask, udpIOControl, udpDIO2Timer, udpApplyChanges);
+  udpCommand = (udpRESLow, udpRESHigh, udpGetIP, udpOutputMask, udpDIO2RPulse, udpDIO2Timer, udpApplyChanges);
 
   TForm1 = class(TForm)
     TCPClient: TIdTCPClient;
@@ -25,6 +25,7 @@ type
     procedure Button2Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
     procedure ResetPulseButtonClick(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
   private
     { Private declarations }
     procedure PrepareBuffer(Command: udpCommand; RequestPacketAck: Boolean);
@@ -68,26 +69,41 @@ implementation
 {----------------------------------------------------------------------------------------------------}
 {----------------------------------------------------------------------------------------------------}
 
+procedure TForm1.FormCreate(Sender: TObject);
+begin
+  {Upon start up, bind UDP to 0xBEE port ($BEE) to receive all responses from XBee Wi-Fi modules
+   because some features have been seen to respond only to a source port of $BEE.}
+  UDPClient.BoundPort := $BEE;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
 procedure TForm1.Button1Click(Sender: TObject);
 begin
   SendUDP(udpRESHigh);
 end;
+
+{----------------------------------------------------------------------------------------------------}
 
 procedure TForm1.Button2Click(Sender: TObject);
 begin
   SendUDP(udpRESLow);
 end;
 
+{----------------------------------------------------------------------------------------------------}
+
 procedure TForm1.Button3Click(Sender: TObject);
 begin
-  SendUDP(udpGetIP, True, '192.168.1.255');
+  SendUDP(udpGetIP, False, '192.168.1.255');
 end;
+
+{----------------------------------------------------------------------------------------------------}
 
 procedure TForm1.ResetPulseButtonClick(Sender: TObject);
 begin
-  SendUDP(udpOutputMask);
-  SendUDP(udpDIO2Timer);
-  SendUDP(udpIOControl);
+  SendUDP(udpOutputMask);   {Ensure output mask is proper (default, in this case)}
+  SendUDP(udpDIO2Timer);    {Ensure DIO2's timer is set to 100 ms}
+  SendUDP(udpDIO2RPulse);   {Start reset pulse}
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -160,8 +176,10 @@ begin
   if Command in [udpGetIP] then
     begin
     FillChar(RxBuf[0], Length(RxBuf), 0);
-    UDPClient.ReceiveBuffer(RxBuf, 2000);
-    if UDPPacketReceived and UDPXBeeWiFiResponse then                                        {XBee Wi-Fi UDP response packet received}
+    UDPClient.ReceiveBuffer(RxBuf, 6000);
+    FillChar(RxBuf[0], Length(RxBuf), 0);
+    UDPClient.ReceiveBuffer(RxBuf, 6000);
+    if UDPPacketReceived {and UDPXBeeWiFiResponse} then                                        {XBee Wi-Fi UDP response packet received}
       self.Caption := self.Caption + ', Response received'
     else
       self.Caption := self.Caption + ', No response';
