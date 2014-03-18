@@ -8,7 +8,7 @@ uses
   IdTCPClient, IdGlobal, FMX.Edit;
 
 type
-  udpCommand = (udpRESLow, udpRESHigh, udpGetIP);
+  udpCommand = (udpRESLow, udpRESHigh, udpGetIP, udpOutputMask, udpIOControl, udpDIO2Timer, udpApplyChanges);
 
   TForm1 = class(TForm)
     TCPClient: TIdTCPClient;
@@ -20,9 +20,11 @@ type
     Port: TEdit;
     PortLabel: TLabel;
     Button3: TButton;
+    ResetPulseButton: TButton;
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
+    procedure ResetPulseButtonClick(Sender: TObject);
   private
     { Private declarations }
     procedure PrepareBuffer(Command: udpCommand; RequestPacketAck: Boolean);
@@ -81,6 +83,13 @@ begin
   SendUDP(udpGetIP, True, '192.168.1.255');
 end;
 
+procedure TForm1.ResetPulseButtonClick(Sender: TObject);
+begin
+  SendUDP(udpOutputMask);
+  SendUDP(udpDIO2Timer);
+  SendUDP(udpIOControl);
+end;
+
 {----------------------------------------------------------------------------------------------------}
 {----------------------------------------------------------------------------------------------------}
 {------------------------------------------ Private Methods -----------------------------------------}
@@ -89,11 +98,15 @@ end;
 
 procedure TForm1.PrepareBuffer(Command: udpCommand; RequestPacketAck: Boolean);
 const
-  CmdStream : array[low(udpCommand)..high(udpCommand), 0..5] of byte =
+  CmdStream : array[low(udpCommand)..high(udpCommand), 0..6] of byte =
     (
-    {udpRESLow}  ( $05, FrameID, ApplyCommand, Byte('D'), Byte('2'), DigitalOutLow ),
-    {udpRESHigh} ( $05, FrameID, ApplyCommand, Byte('D'), Byte('2'), DigitalOutHigh ),
-    {udpGetIP}   ( $04, FrameID, ApplyCommand, Byte('M'), Byte('Y'), NULL )
+    {udpRESLow}       ( $05, FrameID, ApplyCommand, Byte('D'), Byte('2'), DigitalOutLow, NULL ),
+    {udpRESHigh}      ( $05, FrameID, ApplyCommand, Byte('D'), Byte('2'), DigitalOutHigh, NULL ),
+    {udpGetIP}        ( $04, FrameID, ApplyCommand, Byte('M'), Byte('Y'), NULL, NULL ),
+    {udpOutputMask}   ( $06, FrameID, ApplyCommand, Byte('O'), Byte('M'), $7F, $FF ),  {Set output mask to allow all pins to be active}
+    {udpDIO2RPulse}   ( $06, FrameID, ApplyCommand, Byte('I'), Byte('O'), $00, $00 ),  {Set DIO2 to low (for DIO2Timer*100ms period)}
+    {udpDIO2Timer}    ( $06, FrameID, ApplyCommand, Byte('T'), Byte('2'), $00, $01 ),
+    {udpApplyChanges} ( $04, FrameID, ApplyCommand, Byte('A'), Byte('C'), NULL, NULL )
     );
 begin
   SetLength(TxBuf, Length(NetHeader)+1+CmdStream[Command][0]);
