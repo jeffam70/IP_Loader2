@@ -66,14 +66,14 @@ object Form1: TForm1
       Width = 89.000000000000000000
     end
   end
-  object Button3: TButton
+  object IdentifyButton: TButton
     Height = 22.000000000000000000
-    Position.X = 384.000000000000000000
+    Position.X = 512.000000000000000000
     Position.Y = 39.000000000000000000
     TabOrder = 4
-    Text = 'Get IP'
-    Width = 49.000000000000000000
-    OnClick = Button3Click
+    Text = 'Identify'
+    Width = 73.000000000000000000
+    OnClick = IdentifyButtonClick
   end
   object ResetPulseButton: TButton
     Height = 22.000000000000000000
@@ -83,6 +83,16 @@ object Form1: TForm1
     Text = 'Reset Pulse'
     Width = 129.000000000000000000
     OnClick = ResetPulseButtonClick
+  end
+  object NodeID: TEdit
+    Touch.InteractiveGestures = [igLongTap, igDoubleTap]
+    TabOrder = 6
+    ReadOnly = True
+    Position.X = 376.000000000000000000
+    Position.Y = 40.000000000000000000
+    Width = 129.000000000000000000
+    Height = 22.000000000000000000
+    KillFocusByReturn = False
   end
   object TCPClient: TIdTCPClient
     ConnectTimeout = 0

@@ -5,28 +5,35 @@
   * More?
 
 * Calculate round-trip time
+
 * Enhance to Identify
   * Accept multiple responses
-  * Retrieve and display Node Name
+  * Set up proper Broadcast addresses
+
 * Handle errors
   * TCP connection
   * Propeller Protocol
   * Prompts
+
 * Add TCP
   * To connect
   * To transmit image
 
+* Consider
+  * Adding Soft AP mode negotiation
+  * Adding Wi-Fi Protected Setup mode (to hardware?)
+  * Simplify CmdStream
+  * Check on zero-termination of Parameter
 
 Things Done:
 * Enhance to request acknowledgements
 * Enhance to randomize header ID
-
 * Enhance to Identify
   * Broadcast message
-
+  * Retrieve and display Node Name
+  * Retrieve and display port number
 * Add AT commands
   * to set low pulse time
-
 * Handle errors
   * Invalid IP Address (255.255.255.255)
   * No acknowledgement
