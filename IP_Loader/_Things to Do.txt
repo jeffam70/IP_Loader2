@@ -5,13 +5,13 @@
   * More?
 
 * Calculate round-trip time
-* Randomize header ID
 * Enhance to Identify
-  * Broadcast message
+  * Accept multiple responses
+  * Retrieve and display Node Name
 * Handle errors
-  * No acknowledgement
   * TCP connection
   * Propeller Protocol
+  * Prompts
 * Add TCP
   * To connect
   * To transmit image
@@ -19,5 +19,14 @@
 
 Things Done:
 * Enhance to request acknowledgements
+* Enhance to randomize header ID
+
+* Enhance to Identify
+  * Broadcast message
+
 * Add AT commands
   * to set low pulse time
+
+* Handle errors
+  * Invalid IP Address (255.255.255.255)
+  * No acknowledgement
