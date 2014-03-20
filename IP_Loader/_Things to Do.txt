@@ -9,6 +9,7 @@
 * Enhance to Identify
   * Accept multiple responses
   * Set up proper Broadcast addresses
+  * Use TIdStack.IsIP to check for valid IP address
 
 * Handle errors
   * TCP connection
@@ -24,6 +25,10 @@
   * Adding Wi-Fi Protected Setup mode (to hardware?)
   * Simplify CmdStream
   * Check on zero-termination of Parameter
+  * Why Identify doesn't always work at first
+  * Determine how to find local addresses and subnet masks
+  * Finding and maintaining desired response packet in RxBuf (last) before exiting Get/SetXBee method.
+  * String issues in ParameterValue
 
 Things Done:
 * Enhance to request acknowledgements
