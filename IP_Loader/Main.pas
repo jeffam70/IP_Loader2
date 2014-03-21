@@ -26,7 +26,7 @@ const
     );
 
   {Set of UDP Commands that take string parameters (instead of numeric parameters)}
-  udpStrCommands : set of udpCommand = [udpIPAddr, udpNodeID];
+  udpStrCommands : set of udpCommand = [udpNodeID];
 
 type
   {Define XBee Transmission Packet - the format of packets transmitted from networked host to XBee}
@@ -43,7 +43,6 @@ type
     FrameID        : Byte;  //1
     ConfigOptions  : Byte;  //0 = Queue command only; must follow with AC command to apply changes, 2 = Apply Changes immediately
     ATCommand      : Word;  //2-ASCII_character AT command
-    { TODO : Does Tx need parameter sized to 20 elements?  or 21 (for null-termination)? }
     ParameterValue : array[0..63+1] of Byte;  //[Array] If present, indicates the value to set in the given command. If no characters present, command is queried.
   end;
 
@@ -112,6 +111,8 @@ const
   ApplyCommand   = $02;
   pinOutLow      = $04;
   pinOutHigh     = $05;
+  {Misc}
+  Timeout        = 2000;
 
 implementation
 
@@ -153,17 +154,23 @@ end;
 {----------------------------------------------------------------------------------------------------}
 
 procedure TForm1.IdentifyButtonClick(Sender: TObject);
+var
+  Num : Cardinal;
+  Str : String;
 begin
   IPAddr.Text := '....';
 { TODO : Finish redoing IdentifyButtonClick }
-//  if SendUDP(udpGetIP, False, '192.168.1.255') then
-//    begin
-//    IPAddr.Text := inttostr(PRxBuf.ParameterValue[0]) + '.' + inttostr(PRxBuf.ParameterValue[1]) + '.' + inttostr(PRxBuf.ParameterValue[2]) + '.' + inttostr(PRxBuf.ParameterValue[3]);
-//    if SendUDP(udpNodeIdentifier) then NodeID.Text := StrPas(PAnsiChar(@PRxBuf.ParameterValue[0]));
-//    if SendUDP(udpPort) then Port.Text := inttostr(PRxBuf.ParameterValue[0] shl 8 + PRxBuf.ParameterValue[1]);
-//    end
-//  else
-//    IPAddr.Text := '?.?.?.?';
+  if GetXBee(udpIPAddr, Num, '192.168.1.255') then
+    begin
+    IPAddr.Text := inttostr(Num shr 24 and $FF) + '.' + inttostr(Num shr 16 and $FF) + '.' + inttostr(Num shr 8 and $FF) + '.' + inttostr(Num and $FF);
+    if GetXBee(udpNodeID, Str) then NodeID.Text := Str;
+    if GetXBee(udpIPPort, Num) then Port.Text := inttostr(Num);
+    end
+  else
+    begin
+    IPAddr.Text := '?.?.?.?';
+    Port.Text := '?????';
+    end;
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -198,10 +205,13 @@ function TForm1.GetXBee(Command: udpCommand; var Str: String; TargetIP: String =
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  Though it parses and returns the response as a string in Str, the full response packet can be see in PRxBuf.}
 begin
-{ TODO : Test GetXBee String well! }
   Str := '';
-  Result := SetXBee(Command, '', TargetIP);
-  if Result then Str := StrPas(PAnsiChar(@PRxBuf.ParameterValue[0]));
+  Result := SetXBee(Command, '', TargetIP);                                                          {Send packet}
+  if Result then                                                                                     {Response received?}
+    begin
+    PRxBuf.ParameterValue[RxPacketSize-(sizeof(TxbRxPacket)-sizeof(PRxBuf.ParameterValue))] := 0;    {Null-terminate response string}
+    Str := StrPas(PAnsiChar(@PRxBuf.ParameterValue));                                                {Copy to Str}
+    end;
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -228,7 +238,6 @@ function TForm1.SetXBee(Command: udpCommand; Str: String; TargetIP: String = '')
 var
   IP            : String;
   RequiredRx    : Cardinal;         {bit 0 = Packet ACK received, bit 1 = Command response received, bit 2:3 = $0-OK, $1-Error, $2=Invalid command, $3=Invalid parameter}
-  NeedPacketAck : Boolean;          {True = need to request packet acknowledgement, False = no need for packet acknowledgement}
 
     {----------------}
 
@@ -254,13 +263,11 @@ begin
   self.Caption := 'Transmitting...';
   Result := False;                                                                                         {Initialize result to false}
   RequiredRx := 0;                                                                                         {Initialize required reception to none}
-  { TODO : Make NeedPacketAct "right." }
-  NeedPacketAck := True;
-  PrepareBuffer(Command, Str, NeedPacketAck);                                                              {Prepare command packet}
+  PrepareBuffer(Command, Str, True);                                                                       {Prepare command packet}
   try
     {Try to transmit; IP exceptions handled}
     UDPClient.SendBuffer(ifthen(TargetIP <> '', TargetIP, IPAddr.Text), $BEE, TxBuf);                      {Send to TargetIP or GUI-displayed IP}
-    while (RequiredRx < ($2 + ord(NeedPacketAck))) and UDPResponse(2000) do
+    while (RequiredRx < $3) and UDPResponse(Timeout) do
       begin {Process each UDP packet received}
       if IsXBeeResponse then
         begin {It's an XBee Response packet}
@@ -282,7 +289,7 @@ begin
         2 : self.Caption := self.Caption + ' - Invalid Command';
         3 : self.Caption := self.Caption + ' - Invalid Parameter';
       end;
-    Result := RequiredRx = ($2 + ord(NeedPacketAck));
+    Result := RequiredRx = $3;
   except
     {Handle known exceptions}
     on E: EIdSocketError do
