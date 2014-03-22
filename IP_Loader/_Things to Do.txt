@@ -23,12 +23,7 @@
 * Consider
   * Adding Soft AP mode negotiation
   * Adding Wi-Fi Protected Setup mode (to hardware?)
-  * Simplify CmdStream
-  * Check on zero-termination of Parameter
-  * Why Identify doesn't always work at first
   * Determine how to find local addresses and subnet masks
-  * Finding and maintaining desired response packet in RxBuf (last) before exiting Get/SetXBee method.
-  * String issues in ParameterValue
 
 Things Done:
 * Enhance to request acknowledgements
@@ -37,8 +32,15 @@ Things Done:
   * Broadcast message
   * Retrieve and display Node Name
   * Retrieve and display port number
+* Find and maintain desired response packet in RxBuf (last) before exiting Get/SetXBee method.
+
 * Add AT commands
   * to set low pulse time
+* Simplify CmdStream
+
 * Handle errors
   * Invalid IP Address (255.255.255.255)
   * No acknowledgement
+* Handle
+  * String issues in ParameterValue
+  * Zero-termination of Parameter (when receiving)

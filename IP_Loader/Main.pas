@@ -29,38 +29,48 @@ const
   udpStrCommands : set of udpCommand = [udpNodeID];
 
 type
+  {Define Parameter Value}
+  TParamValue = array[0..63+1] of Byte;
+
   {Define XBee Transmission Packet - the format of packets transmitted from networked host to XBee}
   PxbTxPacket = ^TxbTxPacket;
   TxbTxPacket = packed record
     {Application Header}
-    Number1        : Word;  //Can be any random number
-    Number2        : Word;  //Must be Number1 ^ $4242
-    PacketID       : Byte;  //Reserved: $00 for now
-    EncryptionPad  : Byte;  //Reserved: $00 for now
-    CommandID      : Byte;  //$00 = Data, $02 = Remote Command, $03 = General Purpose Memory Command, $04 = I/O Sample
-    CommandOptions : Byte;  //Bit 0 : Encrypt (Reserved), Bit 1 : Request Packet ACK, Bits 2..7 : (Reserved)
+    Number1        : Word;         //Can be any random number
+    Number2        : Word;         //Must be Number1 ^ $4242
+    PacketID       : Byte;         //Reserved: $00 for now
+    EncryptionPad  : Byte;         //Reserved: $00 for now
+    CommandID      : Byte;         //$00 = Data, $02 = Remote Command, $03 = General Purpose Memory Command, $04 = I/O Sample
+    CommandOptions : Byte;         //Bit 0 : Encrypt (Reserved), Bit 1 : Request Packet ACK, Bits 2..7 : (Reserved)
     {Command Data}
-    FrameID        : Byte;  //1
-    ConfigOptions  : Byte;  //0 = Queue command only; must follow with AC command to apply changes, 2 = Apply Changes immediately
-    ATCommand      : Word;  //2-ASCII_character AT command
-    ParameterValue : array[0..63+1] of Byte;  //[Array] If present, indicates the value to set in the given command. If no characters present, command is queried.
+    FrameID        : Byte;         //1
+    ConfigOptions  : Byte;         //0 = Queue command only; must follow with AC command to apply changes, 2 = Apply Changes immediately
+    ATCommand      : Word;         //2-ASCII_character AT command
+    ParameterValue : TParamValue;  //[Array] (if present) is value to set in the given command, otherwise, command is queried.
   end;
 
   {Define XBee Reception Packet - the format of packets transmitted from XBee to networked host}
   PxbRxPacket = ^TxbRxPacket;
   TxbRxPacket = packed record
     {Application Header}
-    Number1        : Word;  //Can be any random number (copied from command packet if this is a response)
-    Number2        : Word;  //Must be Number1 ^ $4242 (copied from command packet if this is a response)
-    PacketID       : Byte;  //Reserved: $00 for now
-    EncryptionPad  : Byte;  //Reserved: $00 for now
-    CommandID      : Byte;  //$80 = Response to Data, $82 = Response to Remote Command, $83 = Response to General Purpose Memory Command
-    CommandOptions : Byte;  //$00 (always)
+    Number1        : Word;         //Can be any random number (copied from command packet if this is a response)
+    Number2        : Word;         //Must be Number1 ^ $4242 (copied from command packet if this is a response)
+    PacketID       : Byte;         //Reserved: $00 for now
+    EncryptionPad  : Byte;         //Reserved: $00 for now
+    CommandID      : Byte;         //$80 = Response to Data, $82 = Response to Remote Command, $83 = Response to General Purpose Memory Command
+    CommandOptions : Byte;         //$00 (always)
     {Command Data}
-    FrameID        : Byte;  //1 (copied from command packet)
-    ATCommand      : Word;  //2-ASCII_character AT command (copied from command packet)
-    Status         : Byte;  //0 = OK, 1 = ERROR, 2 = Invalid Command, 3 = Invalid Parameter
-    ParameterValue : array[0..63+1] of Byte;  //[Array] If present, contains the binary or ASCII-format data requested by the command packet
+    FrameID        : Byte;         //1 (copied from command packet)
+    ATCommand      : Word;         //2-ASCII_character AT command (copied from command packet)
+    Status         : Byte;         //0 = OK, 1 = ERROR, 2 = Invalid Command, 3 = Invalid Parameter
+    ParameterValue : TParamValue;  //[Array] If present, contains the binary or ASCII-format data requested by the command packet
+  end;
+
+  {Define response; used to record or more responses (ParameterValues) from incoming response packets}
+  TResponse = record
+    Length : Cardinal;
+    Status : Byte;
+    Data   : TParamValue;
   end;
 
   TForm1 = class(TForm)
@@ -84,10 +94,10 @@ type
   private
     { Private declarations }
     procedure GenerateResetSignal;
-    function  GetXBee(Command: udpCommand; var Str: String; TargetIP: String = ''): Boolean; overload;
-    function  GetXBee(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''): Boolean; overload;
-    function  SetXBee(Command: udpCommand; Str: String; TargetIP: String = ''): Boolean; overload;
-    function  SetXBee(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean; overload;
+    function  GetXBee(Command: udpCommand; var Str: String; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean; overload;
+    function  GetXBee(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean; overload;
+    function  SetXBee(Command: udpCommand; Str: String; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean; overload;
+    function  SetXBee(Command: udpCommand; Num: Cardinal; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean; overload;
     procedure PrepareBuffer(Command: udpCommand; Parameter: String; RequestPacketAck: Boolean);
   public
     { Public declarations }
@@ -101,6 +111,7 @@ var
   RxPacketSize : Integer;                                           {Size of last actual received packet (inside of RxBuf)}
   PTxBuf       : PxbTxPacket;                                       {Pointer to structured transmit packet (shares memory space with TxBuf)}
   PRxBuf       : PxbRxPacket;                                       {Pointer to structured receive packet (shares memory space with RxBuf)}
+  ResponseList : array of TResponse;                                {Dynamic array of received responses (from packet's parameter field); multiple XBee may respond to broadcast message}
 
 const
   {Network Header Metrics}
@@ -112,7 +123,7 @@ const
   pinOutLow      = $04;
   pinOutHigh     = $05;
   {Misc}
-  Timeout        = 2000;
+  Timeout        = 1000;
 
 implementation
 
@@ -160,7 +171,7 @@ var
 begin
   IPAddr.Text := '....';
 { TODO : Finish redoing IdentifyButtonClick }
-  if GetXBee(udpIPAddr, Num, '192.168.1.255') then
+  if GetXBee(udpIPAddr, Num, '192.168.1.255', True) then
     begin
     IPAddr.Text := inttostr(Num shr 24 and $FF) + '.' + inttostr(Num shr 16 and $FF) + '.' + inttostr(Num shr 8 and $FF) + '.' + inttostr(Num and $FF);
     if GetXBee(udpNodeID, Str) then NodeID.Text := Str;
@@ -200,52 +211,53 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TForm1.GetXBee(Command: udpCommand; var Str: String; TargetIP: String = ''): Boolean;
+function TForm1.GetXBee(Command: udpCommand; var Str: String; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
 {Retrieve XBee attribute string (Str) and return True if successful; False otherwise.
+ Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
+ when a broadcast packet is being transmitted.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
- Though it parses and returns the response as a string in Str, the full response packet can be see in PRxBuf.}
+ Though it parses and returns the response as a string in Str, the full response packet can be seen in PRxBuf.}
 begin
   Str := '';
-  Result := SetXBee(Command, '', TargetIP);                                                          {Send packet}
-  if Result then                                                                                     {Response received?}
-    begin
-    PRxBuf.ParameterValue[RxPacketSize-(sizeof(TxbRxPacket)-sizeof(PRxBuf.ParameterValue))] := 0;    {Null-terminate response string}
-    Str := StrPas(PAnsiChar(@PRxBuf.ParameterValue));                                                {Copy to Str}
-    end;
+  Result := SetXBee(Command, '', TargetIP, ExpectMultiple);                                          {Send packet}
+  if Result then Str := StrPas(PAnsiChar(@ResponseList[0].Data));                                    {Copy data to Str}                                                                                    {Response received?}
 end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TForm1.GetXBee(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''): Boolean;
+function TForm1.GetXBee(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
 {Retrieve XBee attribute value (Num) and return True if successful; False otherwise.
+ Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
+ when a broadcast packet is being transmitted.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
- Though it parses and returns the response as a cardinal in Num, the full response packet can be see in PRxBuf.}
+ Though it parses and returns the response as a cardinal in Num, the full response packet can be seen in PRxBuf.}
 var
   Idx : Cardinal;
 begin
   Num := 0;
-  Result := SetXBee(Command, '', TargetIP);
-  if Result then
-    for Idx := 0 to RxPacketSize-(sizeof(TxbRxPacket)-sizeof(PRxBuf.ParameterValue))-1 do Num := Num shl 8 + PRxBuf.ParameterValue[Idx];
+  Result := SetXBee(Command, '', TargetIP, ExpectMultiple);
+  if Result then for Idx := 0 to ResponseList[0].Length-1 do Num := Num shl 8 + ResponseList[0].Data[Idx];
 end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TForm1.SetXBee(Command: udpCommand; Str: String; TargetIP: String = ''): Boolean;
+function TForm1.SetXBee(Command: udpCommand; Str: String; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
 {Set XBee attribute to string (Str) and return True if successful; False otherwise.
+ Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
+ when a broadcast packet is being transmitted.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
- The full response packet can be see in PRxBuf.}
+ The full response packet can be seen in PRxBuf.}
 var
+  RLIdx         : Integer;          // response list index
   IP            : String;
-  RequiredRx    : Cardinal;         {bit 0 = Packet ACK received, bit 1 = Command response received, bit 2:3 = $0-OK, $1-Error, $2=Invalid command, $3=Invalid parameter}
-
-    {----------------}
-
-    function IsXBeeResponse: Boolean;
-    {Return true if UDP packet is an XBee Wi-Fi response packet (Number2 is Number1 ^ $4242)}
-    begin
-      Result := (PRxBuf.Number1 xor $4242 = PRxBuf.Number2);
-    end;
+  RequiredRx    : Cardinal;         // bit 0 = Packet ACK received, bit 1 = Command response received
+  Status        : Cardinal;         // $0-OK, $1-Error, $2=Invalid command, $3=Invalid parameter
+const
+  {Required Rx codes}
+  PacketAck  = $01;                     {RequiredRx's code for packet ACK received}
+  CommandRsp = $02;                     {RequiredRx's code for command response received}
+  GotItAll   = PacketAck + CommandRsp;  {Code for all required receipts}
+  MuliRsp    = $04;                     {Code for multiple responses possible}
 
     {----------------}
 
@@ -259,37 +271,49 @@ var
     {----------------}
 
 begin
-{ TODO : Test SetXBee String well! }
+{ TODO : Remove dugging Info }
   self.Caption := 'Transmitting...';
   Result := False;                                                                                         {Initialize result to false}
   RequiredRx := 0;                                                                                         {Initialize required reception to none}
+  Status := 0;                                                                                             {Initialize status}
+  RLIdx := -1;                                                                                             {Clear response list index}
+  SetLength(ResponseList, 0);                                                                              {Clear the response list}
   PrepareBuffer(Command, Str, True);                                                                       {Prepare command packet}
   try
     {Try to transmit; IP exceptions handled}
     UDPClient.SendBuffer(ifthen(TargetIP <> '', TargetIP, IPAddr.Text), $BEE, TxBuf);                      {Send to TargetIP or GUI-displayed IP}
-    while (RequiredRx < $3) and UDPResponse(Timeout) do
+    {Transmitted fine, retrieve}
+    while (RequiredRx < GotItAll+ord(ExpectMultiple)*MuliRsp) and UDPResponse(Timeout) do                  {For every UDP Packet received (until we've received the expected packets)}
       begin {Process each UDP packet received}
-      if IsXBeeResponse then
+      if PRxBuf.Number1 xor $4242 = PRxBuf.Number2 then                                                    {if packet is an XBee Wi-Fi response packet (Number2 is Number1 ^ $4242)}
         begin {It's an XBee Response packet}
-        if (PRxBuf.CommandID = $80) then RequiredRx := RequiredRx or $1;                                   {Note that we received XBee Wi-Fi UDP ACK packet}
+        if (PRxBuf.CommandID = $80) then RequiredRx := RequiredRx or PacketAck;                            {Note when we received XBee Wi-Fi UDP ACK packet}
         if (PRxBuf.CommandID = (PTxBuf.CommandID or $80)) and (PRxBuf.ATCommand = PTxBuf.ATCommand) then
-          RequiredRx := RequiredRx or $2 or (PRxBuf.Status shl 2);                                         {Note that we received XBee Wi-Fi UDP command response packet}
+          begin
+          RequiredRx := RequiredRx or CommandRsp or (PRxBuf.Status shl 2);                                 {Note when we received XBee Wi-Fi UDP command response packet}
+          Status := Status or PRxBuf.Status;
+          inc(RLIdx);
+          SetLength(ResponseList, RLIdx+1);                                                                {Make room for response}
+          ResponseList[RLIdx].Length := RxPacketSize-(sizeof(TxbRxPacket)-sizeof(PRxBuf.ParameterValue));  {Note response length}
+          ResponseList[RLIdx].Status := PRxBuf.Status;                                                     {Note response status}
+          Move(PRxBuf.ParameterValue, ResponseList[RLIdx].Data, ResponseList[RLIdx].Length);               {Save response data}
+          ResponseList[RLIdx].Data[ResponseList[RLIdx].Length] := 0;                                       {Null-terminate (in case it's a string)}
+          end;
         end;
       end;
-    case RequiredRx and $3 of
+    case RequiredRx of
       0 : self.Caption := 'No Response';
       1 : self.Caption := 'Only Ack received';
       2 : self.Caption := 'Only Response received';
       3 : self.Caption := 'Both Ack and Response received';
     end;
-    if RequiredRx and $3 > 0 then
-      case (RequiredRx shr 2) and $3 of
-        0 : self.Caption := self.Caption + ' - Okay';
-        1 : self.Caption := self.Caption + ' - Error';
-        2 : self.Caption := self.Caption + ' - Invalid Command';
-        3 : self.Caption := self.Caption + ' - Invalid Parameter';
-      end;
-    Result := RequiredRx = $3;
+    case Status of
+      0 : self.Caption := self.Caption + ' - Okay';
+      1 : self.Caption := self.Caption + ' - Error';
+      2 : self.Caption := self.Caption + ' - Invalid Command';
+      3 : self.Caption := self.Caption + ' - Invalid Parameter';
+    end;
+    Result := (RequiredRx = PacketAck + CommandRsp) and (Status = 0);
   except
     {Handle known exceptions}
     on E: EIdSocketError do
@@ -304,12 +328,14 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TForm1.SetXBee(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean;
-{Set XBee attribute to value (Str) and return True if successful; False otherwise.
+function TForm1.SetXBee(Command: udpCommand; Num: Cardinal; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
+{Set XBee attribute to value (Num) and return True if successful; False otherwise.
+ Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
+ when a broadcast packet is being transmitted.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
- The full response packet can be see in PRxBuf.}
+ The full response packet can be seen in PRxBuf.}
 begin
-  Result := SetXBee(Command, inttostr(Num), TargetIP);
+  Result := SetXBee(Command, inttostr(Num), TargetIP, ExpectMultiple);
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -359,7 +385,7 @@ end;
 {----------------------------------------------------------------------------------------------------}
 
 Initialization
-  Randomize;                                     {Initializ the random seed}
+  Randomize;                                     {Initialize the random seed}
   SetLength(RxBuf, 1500);                        {Set receive buffer length}
   PRxBuf := PxbRxPacket(@RxBuf[0]);              {Point PRxBuf at RxBuf}
 
