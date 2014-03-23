@@ -5,17 +5,20 @@ interface
 uses
   System.SysUtils, System.StrUtils, System.Types, System.UITypes, System.Classes, System.Variants, System.Math,
   FMX.Types, FMX.Graphics, FMX.Controls, FMX.Forms, FMX.Dialogs, FMX.StdCtrls, FMX.Edit,
-  IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack;
+  IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack,
+  FMX.ListBox;
 
 type
   {Define XBee WiFi's udp commands}
   {IMPORTANT: Do not rearrange, append, or delete from this list without similarly modifying the ATCmd constant array}
-  udpCommand = (udpIPAddr, udpIPPort, udpNodeID, udpRES, udpOutputMask, udpOutputState, udpIO2Timer);
+  udpCommand = (udpMacHigh, udpMacLow, udpIPAddr, udpIPPort, udpNodeID, udpRES, udpOutputMask, udpOutputState, udpIO2Timer);
 
 const
   {Define XBee WiFi's AT commands}
   ATCmd : array[low(udpCommand)..high(udpCommand)] of Word =
     (
+    {udpMacHigh}         Byte('S') + Byte('H') shl 8,  {XBee's Mac Address (highest 16-bits}
+    {udpMacLow}          Byte('S') + Byte('L') shl 8,  {XBee's Mac Address (lowest 32-bits}
     {udpIPAddr}          Byte('M') + Byte('Y') shl 8,  {XBee's IP Address}
     {udpIPPort}          Byte('C') + Byte('0') shl 8,  {Xbee's UDP/IP Port}
     {udpNodeID}          Byte('N') + Byte('I') shl 8,  {Friendly node identifier string}
@@ -73,32 +76,56 @@ type
     Data   : TParamValue;
   end;
 
+  {Define simple string list}
+  TSimpleStringList = array of String;
+
+  {Define simple number list}
+  TSimpleNumberList = array of Cardinal;
+
+  {Define XBee Info record}
+  PXBee = ^ TXBee;
+  TXBee = record
+    PCPort      : String;                     {Pseudo-Communication Port (derived from MacAddr}
+    IPAddr      : String;                     {IP Address}
+    IPPort      : Cardinal;                   {IP Port}
+    MacAddrHigh : Cardinal;                   {Upper 16 bits of MAC address}
+    MacAddrLow  : Cardinal;                   {Lower 32 bits of MAC address}
+    NodeID      : String;                     {Friendly Node ID}
+  end;
+
   TForm1 = class(TForm)
     TCPClient: TIdTCPClient;
     UDPClient: TIdUDPClient;
     Button1: TButton;
     Button2: TButton;
-    IPAddr: TEdit;
-    IPAddrLabel: TLabel;
-    Port: TEdit;
+    PCPortLabel: TLabel;
+    IPPort: TEdit;
     PortLabel: TLabel;
     IdentifyButton: TButton;
     ResetPulseButton: TButton;
     NodeID: TEdit;
     IdIOHandlerStack1: TIdIOHandlerStack;
+    PCPortCombo: TComboBox;
+    IPAddr: TEdit;
+    MACAddr: TEdit;
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure IdentifyButtonClick(Sender: TObject);
     procedure ResetPulseButtonClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
+    procedure PCPortComboChange(Sender: TObject);
   private
     { Private declarations }
     procedure GenerateResetSignal;
-    function  GetXBee(Command: udpCommand; var Str: String; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean; overload;
-    function  GetXBee(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean; overload;
+    function  GetXBee(Command: udpCommand; var Str: String; TargetIP: String = ''): Boolean; overload;
+    function  GetXBee(Command: udpCommand; var StrList: TSimpleStringList; TargetIP: String = ''): Boolean; overload;
+    function  GetXBee(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''): Boolean; overload;
+    function  GetXBee(Command: udpCommand; var NumList: TSimpleNumberList; TargetIP: String = ''): Boolean; overload;
     function  SetXBee(Command: udpCommand; Str: String; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean; overload;
-    function  SetXBee(Command: udpCommand; Num: Cardinal; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean; overload;
+    function  SetXBee(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean; overload;
     procedure PrepareBuffer(Command: udpCommand; Parameter: String; RequestPacketAck: Boolean);
+    function FormatIPAddr(IPAddr: Cardinal): String;
+    function FormatMACAddr(MacAddrHigh, MacAddrLow: Cardinal): String;
   public
     { Public declarations }
   end;
@@ -112,6 +139,7 @@ var
   PTxBuf       : PxbTxPacket;                                       {Pointer to structured transmit packet (shares memory space with TxBuf)}
   PRxBuf       : PxbRxPacket;                                       {Pointer to structured receive packet (shares memory space with RxBuf)}
   ResponseList : array of TResponse;                                {Dynamic array of received responses (from packet's parameter field); multiple XBee may respond to broadcast message}
+  XBeeList     : array of TXBee;                                    {Dynamic array of XBee Info records}
 
 const
   {Network Header Metrics}
@@ -166,21 +194,36 @@ end;
 
 procedure TForm1.IdentifyButtonClick(Sender: TObject);
 var
-  Num : Cardinal;
-  Str : String;
+  Idx  : Cardinal;
+//  Num  : Cardinal;
+  Nums : TSimpleNumberList;
+//  Str  : String;
+  PXB   : PXBee;
 begin
-  IPAddr.Text := '....';
+  PCPortCombo.Clear;
+  SetLength(XBeeList, 0);
+  MacAddr.Text := '';
+  IPAddr.Text := '';
+  IPPort.Text := '';
+  NodeID.Text := '';
 { TODO : Finish redoing IdentifyButtonClick }
-  if GetXBee(udpIPAddr, Num, '192.168.1.255', True) then
+{ TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
+  if GetXBee(udpIPAddr, Nums, '192.168.1.255') then
     begin
-    IPAddr.Text := inttostr(Num shr 24 and $FF) + '.' + inttostr(Num shr 16 and $FF) + '.' + inttostr(Num shr 8 and $FF) + '.' + inttostr(Num and $FF);
-    if GetXBee(udpNodeID, Str) then NodeID.Text := Str;
-    if GetXBee(udpIPPort, Num) then Port.Text := inttostr(Num);
-    end
-  else
-    begin
-    IPAddr.Text := '?.?.?.?';
-    Port.Text := '?????';
+    for Idx := 0 to High(Nums) do
+      begin
+      SetLength(XBeeList, Length(XBeeList)+1);
+      PXB := @XBeeList[High(XBeeList)];
+      PXB.IPAddr := FormatIPAddr(Nums[Idx]);
+      if GetXBee(udpIPPort, PXB.IPPort, PXB.IPAddr) then
+        if GetXBee(udpMacHigh, PXB.MacAddrHigh, PXB.IPAddr) then
+          if GetXBee(udpMacLow, PXB.MacAddrLow, PXB.IPAddr) then
+            if GetXBee(udpNodeID, PXB.NodeID, PXB.IPAddr) then
+              begin
+              PXB.PCPort := 'XB' + rightstr(inttostr(PXB.MacAddrLow), 2);
+              PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB));
+              end;
+      end;
     end;
 end;
 
@@ -189,6 +232,16 @@ end;
 procedure TForm1.ResetPulseButtonClick(Sender: TObject);
 begin
   GenerateResetSignal;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+procedure TForm1.PCPortComboChange(Sender: TObject);
+begin
+  IPAddr.Text := XBeeList[PCPortCombo.Selected.Index].IPAddr;
+  IPPort.Text := inttostr(XBeeList[PCPortCombo.Selected.Index].IPPort);
+  NodeID.Text := XBeeList[PCPortCombo.Selected.Index].NodeID;
+  MacAddr.Text := FormatMACAddr(XBeeList[PCPortCombo.Selected.Index].MacAddrHigh, XBeeList[PCPortCombo.Selected.Index].MacAddrLow);
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -211,32 +264,78 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TForm1.GetXBee(Command: udpCommand; var Str: String; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
+function TForm1.GetXBee(Command: udpCommand; var Str: String; TargetIP: String = ''): Boolean;
 {Retrieve XBee attribute string (Str) and return True if successful; False otherwise.
- Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
- when a broadcast packet is being transmitted.
+ Set TargetIP if other than IPAddr.Text should be used.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  Though it parses and returns the response as a string in Str, the full response packet can be seen in PRxBuf.}
 begin
   Str := '';
-  Result := SetXBee(Command, '', TargetIP, ExpectMultiple);                                          {Send packet}
-  if Result then Str := StrPas(PAnsiChar(@ResponseList[0].Data));                                    {Copy data to Str}                                                                                    {Response received?}
+  Result := SetXBee(Command, '', TargetIP);                                               {Send packet}
+  if Result then Str := StrPas(PAnsiChar(@ResponseList[0].Data));                         {Copy data to Str}
 end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TForm1.GetXBee(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
+function TForm1.GetXBee(Command: udpCommand; var StrList: TSimpleStringList; TargetIP: String = ''): Boolean;
+{Retrieve XBee attribute strings (StrList) and return True if successful; False otherwise.
+ Set TargetIP if other than IPAddr.Text should be used.
+ This method creates and sends a UDP packet, and checks and validates the response (if any).
+ Though it parses and returns the response as a string in Str, the full response packet can be seen in PRxBuf.}
+var
+  Idx : Cardinal;
+begin
+{ TODO : Test GetXBee StrList }
+  SetLength(StrList, 0);
+  Result := SetXBee(Command, '', TargetIP, True);                                         {Send packet}
+  if Result then                                                                          {If response received}
+    begin                                                                                 {Copy data to StrList}
+    for Idx := 0 to High(ResponseList) do
+      begin
+      SetLength(StrList, Length(StrList)+1);
+      StrList[High(StrList)] := StrPas(PAnsiChar(@ResponseList[0].Data));
+      end;
+    end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TForm1.GetXBee(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''): Boolean;
 {Retrieve XBee attribute value (Num) and return True if successful; False otherwise.
- Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
- when a broadcast packet is being transmitted.
+ Set TargetIP if other than IPAddr.Text should be used.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  Though it parses and returns the response as a cardinal in Num, the full response packet can be seen in PRxBuf.}
 var
   Idx : Cardinal;
 begin
   Num := 0;
-  Result := SetXBee(Command, '', TargetIP, ExpectMultiple);
+  Result := SetXBee(Command, '', TargetIP);
   if Result then for Idx := 0 to ResponseList[0].Length-1 do Num := Num shl 8 + ResponseList[0].Data[Idx];
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TForm1.GetXBee(Command: udpCommand; var NumList: TSimpleNumberList; TargetIP: String = ''): Boolean;
+{Retrieve XBee attribute values (NumList) and return True if successful; False otherwise.
+ Set TargetIP if other than IPAddr.Text should be used.
+ This method creates and sends a UDP packet, and checks and validates the response (if any).
+ Though it parses and returns the response as a cardinal in Num, the full response packet can be seen in PRxBuf.}
+var
+  RIdx : Cardinal;
+  NIdx : Cardinal;
+begin
+  SetLength(NumList, 0);
+  Result := SetXBee(Command, '', TargetIP, True);                                         {Send packet}
+  if Result then                                                                          {If response received}
+    begin                                                                                 {Copy data to NumList}
+    for RIdx := 0 to High(ResponseList) do
+      begin
+      SetLength(NumList, Length(NumList)+1);
+      NumList[High(NumList)] := 0;
+      for NIdx := 0 to ResponseList[RIdx].Length-1 do
+        NumList[High(NumList)] := NumList[High(NumList)] shl 8 + ResponseList[RIdx].Data[NIdx];
+      end;
+    end;
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -328,14 +427,13 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TForm1.SetXBee(Command: udpCommand; Num: Cardinal; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
+function TForm1.SetXBee(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean;
 {Set XBee attribute to value (Num) and return True if successful; False otherwise.
- Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
- when a broadcast packet is being transmitted.
+ Set TargetIP if other than IPAddr.Text should be used.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  The full response packet can be seen in PRxBuf.}
 begin
-  Result := SetXBee(Command, inttostr(Num), TargetIP, ExpectMultiple);
+  Result := SetXBee(Command, inttostr(Num), TargetIP);
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -380,6 +478,24 @@ begin
       Move(Parameter, PTxBuf.ParameterValue[0], ParamLength)                           {  append Parameter as a string}
     else
       Move(ParamValue, PTxBuf.ParameterValue[0], ParamLength);                         {  or as a numeric value}
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TForm1.FormatIPAddr(IPAddr: Cardinal): String;
+{Return IP Address in standard string format}
+begin
+  Result := Format('%d.%d.%d.%d', [IPAddr shr 24 and $FF, IPAddr shr 16 and $FF, IPAddr shr 8 and $FF, IPAddr and $FF]);
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TForm1.FormatMACAddr(MacAddrHigh, MacAddrLow: Cardinal): String;
+{Return MAC Address (48-bit number in MacAddrHigh:MaccAddrLow) in standard string format}
+var
+  Idx : Cardinal;
+begin
+  Result := Format('%.2x:%.2x:%.2x:%.2x:%.2x:%.2x', [MacAddrHigh shr 8 and $FF, MacAddrHigh and $FF, MacAddrLow shr 24 and $FF, MacAddrLow shr 16 and $FF, MacAddrLow shr 8 and $FF, MacAddrLow and $FF]);
 end;
 
 {----------------------------------------------------------------------------------------------------}

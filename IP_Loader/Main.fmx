@@ -32,45 +32,11 @@ object Form1: TForm1
     Width = 129.000000000000000000
     OnClick = Button2Click
   end
-  object IPAddr: TEdit
-    Touch.InteractiveGestures = [igLongTap, igDoubleTap]
-    TabOrder = 2
-    Text = '192.168.1.101'
-    Position.X = 280.000000000000000000
-    Position.Y = 40.000000000000000000
-    Width = 89.000000000000000000
-    Height = 22.000000000000000000
-    KillFocusByReturn = False
-    object IPAddrLabel: TLabel
-      Height = 17.000000000000000000
-      Position.X = -69.000000000000000000
-      Position.Y = 2.000000000000000000
-      Text = 'IP Address:'
-      Width = 89.000000000000000000
-    end
-  end
-  object Port: TEdit
-    Touch.InteractiveGestures = [igLongTap, igDoubleTap]
-    TabOrder = 3
-    Text = '9750'
-    Position.X = 280.000000000000000000
-    Position.Y = 72.000000000000000000
-    Width = 41.000000000000000000
-    Height = 22.000000000000000000
-    KillFocusByReturn = False
-    object PortLabel: TLabel
-      Height = 17.000000000000000000
-      Position.X = -69.000000000000000000
-      Position.Y = 2.000000000000000000
-      Text = 'Port:'
-      Width = 89.000000000000000000
-    end
-  end
   object IdentifyButton: TButton
     Height = 22.000000000000000000
     Position.X = 512.000000000000000000
     Position.Y = 39.000000000000000000
-    TabOrder = 4
+    TabOrder = 2
     Text = 'Identify'
     Width = 73.000000000000000000
     OnClick = IdentifyButtonClick
@@ -79,20 +45,69 @@ object Form1: TForm1
     Height = 22.000000000000000000
     Position.X = 240.000000000000000000
     Position.Y = 216.000000000000000000
-    TabOrder = 5
+    TabOrder = 3
     Text = 'Reset Pulse'
     Width = 129.000000000000000000
     OnClick = ResetPulseButtonClick
   end
-  object NodeID: TEdit
-    Touch.InteractiveGestures = [igLongTap, igDoubleTap]
-    TabOrder = 6
-    ReadOnly = True
-    Position.X = 376.000000000000000000
+  object PCPortCombo: TComboBox
+    DisableFocusEffect = False
+    Height = 22.000000000000000000
+    Position.X = 243.000000000000000000
     Position.Y = 40.000000000000000000
-    Width = 129.000000000000000000
+    TabOrder = 4
+    Width = 70.000000000000000000
+    OnChange = PCPortComboChange
+    object PCPortLabel: TLabel
+      Height = 17.000000000000000000
+      Position.X = -60.000000000000000000
+      Position.Y = 2.000000000000000000
+      Text = 'Port/ID:'
+      Width = 57.000000000000000000
+    end
+    object NodeID: TEdit
+      Touch.InteractiveGestures = [igLongTap, igDoubleTap]
+      TabOrder = 1
+      ReadOnly = True
+      Position.X = 77.000000000000000000
+      Width = 162.000000000000000000
+      Height = 22.000000000000000000
+      KillFocusByReturn = False
+    end
+  end
+  object IPAddr: TEdit
+    Touch.InteractiveGestures = [igLongTap, igDoubleTap]
+    TabOrder = 5
+    ReadOnly = True
+    Position.X = 346.000000000000000000
+    Position.Y = 72.000000000000000000
+    Width = 89.000000000000000000
     Height = 22.000000000000000000
     KillFocusByReturn = False
+    object IPPort: TEdit
+      Touch.InteractiveGestures = [igLongTap, igDoubleTap]
+      TabOrder = 1
+      Position.X = 95.000000000000000000
+      Width = 41.000000000000000000
+      Height = 22.000000000000000000
+      KillFocusByReturn = False
+    end
+    object PortLabel: TLabel
+      Height = 17.000000000000000000
+      Position.X = -240.000000000000000000
+      Position.Y = 2.000000000000000000
+      Text = 'MACAddr/IPAddr/IPPort:'
+      Width = 141.000000000000000000
+    end
+    object MACAddr: TEdit
+      Touch.InteractiveGestures = [igLongTap, igDoubleTap]
+      TabOrder = 3
+      ReadOnly = True
+      Position.X = -103.000000000000000000
+      Width = 97.000000000000000000
+      Height = 22.000000000000000000
+      KillFocusByReturn = False
+    end
   end
   object TCPClient: TIdTCPClient
     ConnectTimeout = 0
