@@ -1,11 +1,6 @@
 THINGS TO DO
 ------------
 
-* Add AT commands
-  * to set baud rate
-  * to set transparent mode
-  * More?
-
 * Calculate round-trip time
 
 * Enhance to Identify
@@ -47,6 +42,12 @@ THINGS DONE
   * to set low pulse time
   * to set RESn state
   * to get MAC Address
+  * to set baud rate
+  * to set parity
+  * to set stop bits
+  * to get maximum RF payload
+  * to get IP Mask
+  * to get IP Gateway
 
 * Simplify CmdStream
 

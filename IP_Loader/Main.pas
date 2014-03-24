@@ -11,21 +11,29 @@ uses
 type
   {Define XBee WiFi's udp commands}
   {IMPORTANT: Do not rearrange, append, or delete from this list without similarly modifying the ATCmd constant array}
-  udpCommand = (udpMacHigh, udpMacLow, udpIPAddr, udpIPPort, udpNodeID, udpRES, udpOutputMask, udpOutputState, udpIO2Timer);
+  udpCommand = (udpMacHigh, udpMacLow, udpSSID, udpIPAddr, udpIPMask, udpIPGateway, udpIPPort, udpNodeID, udpMaxRFPayload, udpRES, udpOutputMask,
+  udpOutputState, udpIO2Timer, udpSerialBaud, udpSerialParity, udpSerialStopBits);
 
 const
   {Define XBee WiFi's AT commands}
   ATCmd : array[low(udpCommand)..high(udpCommand)] of Word =
-    (
-    {udpMacHigh}         Byte('S') + Byte('H') shl 8,  {XBee's Mac Address (highest 16-bits}
-    {udpMacLow}          Byte('S') + Byte('L') shl 8,  {XBee's Mac Address (lowest 32-bits}
-    {udpIPAddr}          Byte('M') + Byte('Y') shl 8,  {XBee's IP Address}
-    {udpIPPort}          Byte('C') + Byte('0') shl 8,  {Xbee's UDP/IP Port}
-    {udpNodeID}          Byte('N') + Byte('I') shl 8,  {Friendly node identifier string}
-    {udpRES}             Byte('D') + Byte('2') shl 8,  {Designated reset pin}
-    {udpOutputMask}      Byte('O') + Byte('M') shl 8,  {Output mask for all I/O pins (each 1 = output pin, each 0 = input pin)}
-    {udpOutputState}     Byte('I') + Byte('O') shl 8,  {Output state for all I/O pins (each 1 = high, each 0 = low).  Period affected by updIO2Timer}
-    {udpIO2Timer}        Byte('T') + Byte('2') shl 8   {I/O 2 state timer}
+    ({NOTES: [R] - read only, [R/W] = read/write, [s] - string, [b] - binary number, [sb] - string or binary number}
+    {udpMacHigh}         Byte('S') + Byte('H') shl 8,  {[Rb] XBee's Mac Address (highest 16-bits)}
+    {udpMacLow}          Byte('S') + Byte('L') shl 8,  {[Rb] XBee's Mac Address (lowest 32-bits)}
+    {udpSSID}            Byte('I') + Byte('D') shl 8,  {[Rs/Ws] SSID (0 to 31 printable ASCII characters)}
+    {udpIPAddr}          Byte('M') + Byte('Y') shl 8,  {[Rb*/Wsb] XBee's IP Address (32-bits); *Read-only in DHCP mode}
+    {udpIPMask}          Byte('M') + Byte('K') shl 8,  {[Rb*/Wsb] XBee's IP Mask (32-bits); *Read-only in DHCP mode}
+    {udpIPGateway}       Byte('G') + Byte('W') shl 8,  {[Rb*/Wsb] XBee's IP Gateway (32-bits); *Read-only in DHCP mode}
+    {udpIPPort}          Byte('C') + Byte('0') shl 8,  {[Rb/Wb] Xbee's UDP/IP Port (16-bits)}
+    {udpNodeID}          Byte('N') + Byte('I') shl 8,  {[Rs/Ws] Friendly node identifier string (20 printable ASCII characters)}
+    {udpMaxRFPayload}    Byte('N') + Byte('P') shl 8,  {[Rb] Maximum RF Payload (16-bits; in bytes)}
+    {udpIO2State}        Byte('D') + Byte('2') shl 8,  {[Rb/Wb] Designated reset pin (3-bits; 0=Disabled, 1=SPI_CLK, 2=Analog input, 3=Digital input, 4=Digital output, 5=Digital output)}
+    {udpOutputMask}      Byte('O') + Byte('M') shl 8,  {[Rb/Wb] Output mask for all I/O pins (each 1=output pin, each 0=input pin) (15-bits on TH, 20-bits on SMT)}
+    {udpOutputState}     Byte('I') + Byte('O') shl 8,  {[Rb/Wb] Output state for all I/O pins (each 1=high, each 0=low) (15-bits on TH, 20-bits on SMT).  Period affected by updIO2Timer}
+    {udpIO2Timer}        Byte('T') + Byte('2') shl 8,  {[Rb/Wb] I/O 2 state timer (100 ms units; $0..$1770)}
+    {udpSerialBaud}      Byte('B') + Byte('D') shl 8,  {[Rb/Wb] serial baud rate ($1=2400, $2=4800, $3=9600, $4=19200, $5=38400, $6=57600, $7=115200, $8=230400, $9=460800, $A=921600)}
+    {udpSerialParity}    Byte('N') + Byte('B') shl 8,  {[Rb/Wb] serial parity ($0=none, $1=even, $2=odd)}
+    {udpSerialStopBits}  Byte('S') + Byte('B') shl 8   {[Rb/Wb] serial stop bits ($0=one stop bit, $1=two stop bits)}
     );
 
   {Set of UDP Commands that take string parameters (instead of numeric parameters)}
@@ -195,9 +203,7 @@ end;
 procedure TForm1.IdentifyButtonClick(Sender: TObject);
 var
   Idx  : Cardinal;
-//  Num  : Cardinal;
   Nums : TSimpleNumberList;
-//  Str  : String;
   PXB   : PXBee;
 begin
   PCPortCombo.Clear;
@@ -206,7 +212,6 @@ begin
   IPAddr.Text := '';
   IPPort.Text := '';
   NodeID.Text := '';
-{ TODO : Finish redoing IdentifyButtonClick }
 { TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
   if GetXBee(udpIPAddr, Nums, '192.168.1.255') then
     begin
