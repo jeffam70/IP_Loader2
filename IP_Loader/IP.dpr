@@ -2,7 +2,8 @@ program IP;
 
 uses
   FMX.Forms,
-  Main in 'Main.pas' {Form1};
+  Main in 'Main.pas' {Form1},
+  XBeeWiFi in 'XBeeWiFi.pas';
 
 {$R *.res}
 

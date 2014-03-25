@@ -8,6 +8,7 @@ object Form1: TForm1
   FormFactor.Height = 480
   FormFactor.Devices = [dkDesktop, dkiPhone, dkiPad]
   OnCreate = FormCreate
+  OnDestroy = FormDestroy
   DesignerMobile = False
   DesignerWidth = 0
   DesignerHeight = 0
@@ -108,23 +109,5 @@ object Form1: TForm1
       Height = 22.000000000000000000
       KillFocusByReturn = False
     end
-  end
-  object TCPClient: TIdTCPClient
-    ConnectTimeout = 0
-    IPVersion = Id_IPv4
-    Port = 0
-    ReadTimeout = -1
-    Left = 72
-  end
-  object UDPClient: TIdUDPClient
-    Port = 0
-    Left = 16
-  end
-  object IdIOHandlerStack1: TIdIOHandlerStack
-    MaxLineAction = maException
-    Port = 0
-    DefaultPort = 0
-    Left = 184
-    Top = 272
   end
 end

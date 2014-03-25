@@ -9,5 +9,5 @@ been tested.
 Project/Folder Description
 --------------------------
 
-  * IP_Loader/ - contains the IP Loader project.  The Main.pas unit is the most important for study. 
+  * IP_Loader/ - contains the IP Loader project.  The Main.pas and XBeeWiFi.pas units are the most important for study. 
   * PropellerImages/ - contains the Spin and Binary example Propeller Applications used during testing of the download process.
