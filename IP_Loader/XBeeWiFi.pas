@@ -10,8 +10,8 @@ uses
 type
   {Define XBee WiFi's udp commands}
   {IMPORTANT: Do not rearrange, append, or delete from this list without similarly modifying the ATCmd constant array}
-  udpCommand = (udpMacHigh, udpMacLow, udpSSID, udpIPAddr, udpIPMask, udpIPGateway, udpIPPort, udpNodeID, udpMaxRFPayload, udpRES, udpOutputMask,
-  udpOutputState, udpIO2Timer, udpSerialBaud, udpSerialParity, udpSerialStopBits);
+  udpCommand = (udpMacHigh, udpMacLow, udpSSID, udpIPAddr, udpIPMask, udpIPGateway, udpIPPort, udpNodeID, udpMaxRFPayload, udpIO2State,
+                udpOutputMask, udpOutputState, udpIO2Timer, udpSerialBaud, udpSerialParity, udpSerialStopBits);
 
 const
   {Define XBee WiFi's AT commands}

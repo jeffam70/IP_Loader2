@@ -20,6 +20,8 @@ THINGS TO DO
   * Adding Soft AP mode negotiation
   * Adding Wi-Fi Protected Setup mode (to hardware?)
   * Determine how to find local addresses and subnet masks
+  * Recording and restoring previous settings when done
+    * This may be simpler with a single command, if there is one.
 
 
 THINGS DONE

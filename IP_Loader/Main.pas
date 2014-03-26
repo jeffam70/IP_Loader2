@@ -5,7 +5,7 @@ interface
 uses
   System.SysUtils, System.StrUtils, System.Types, System.UITypes, System.Classes, System.Variants, System.Math,
   FMX.Types, FMX.Graphics, FMX.Controls, FMX.Forms, FMX.Dialogs, FMX.StdCtrls, FMX.Edit, FMX.ListBox,
-  XBeeWiFi;
+  XBeeWiFi, IdBaseComponent, IdComponent, IdRawBase, IdRawClient, IdIcmpClient;
 
 type
   {Define XBee Info record}
@@ -31,6 +31,7 @@ type
     PCPortCombo: TComboBox;
     IPAddr: TEdit;
     MACAddr: TEdit;
+    PingClient: TIdIcmpClient;
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure IdentifyButtonClick(Sender: TObject);
@@ -86,7 +87,7 @@ procedure TForm1.Button1Click(Sender: TObject);
 //var
 //  IP : TIDStack;
 begin
-  XBee.SetItem(udpRES, pinOutHigh);
+  XBee.SetItem(udpIO2State, pinOutHigh);
 //  IP := TIDStack.Create;
 //  IP.NewInstance;
 //  IPAddr.Text := IP.LocalAddress;
@@ -97,7 +98,7 @@ end;
 
 procedure TForm1.Button2Click(Sender: TObject);
 begin
-  XBee.SetItem(udpRES, pinOutLow);
+  XBee.SetItem(udpIO2State, pinOutLow);
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -153,6 +154,7 @@ begin
   MacAddr.Text := FormatMACAddr(XBeeList[PCPortCombo.Selected.Index].MacAddrHigh, XBeeList[PCPortCombo.Selected.Index].MacAddrLow);
 end;
 
+
 {----------------------------------------------------------------------------------------------------}
 {----------------------------------------------------------------------------------------------------}
 {------------------------------------------ Private Methods -----------------------------------------}
@@ -164,11 +166,13 @@ procedure TForm1.GenerateResetSignal;
 var
   Value : Cardinal;
 begin
-  if XBee.GetItem(udpOutputMask, Value) then
-    if (Value = $7FFF) or XBee.SetItem(udpOutputMask, $7FFF) then                         {Ensure output mask is proper (default, in this case)}
-      if XBee.GetItem(udpIO2Timer, Value) then
-        if (Value = 1) or XBee.SetItem(udpIO2Timer, 1) then                               {Ensure DIO2's timer is set to 100 ms}
-          XBee.SetItem(udpOutputState, $0000);                                            {Start reset pulse}
+  if XBee.GetItem(udpIO2State, Value) then
+    if (Value = pinOutHigh) or XBee.SetItem(udpIO2State, pinOutHigh) then                     {Ensure I/O is set to output high}
+      if XBee.GetItem(udpOutputMask, Value) then
+        if (Value = $7FFF) or XBee.SetItem(udpOutputMask, $7FFF) then                         {Ensure output mask is proper (default, in this case)}
+          if XBee.GetItem(udpIO2Timer, Value) then
+            if (Value = 1) or XBee.SetItem(udpIO2Timer, 1) then                               {Ensure DIO2's timer is set to 100 ms}
+              XBee.SetItem(udpOutputState, $0000);                                            {Start reset pulse}
 end;
 
 
