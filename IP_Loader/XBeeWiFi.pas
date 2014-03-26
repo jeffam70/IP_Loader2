@@ -139,8 +139,25 @@ const
   FrameID        = $01;
   QueueCommand   = $00;
   ApplyCommand   = $02;
+  {--I/O--}
   pinOutLow      = $04;
   pinOutHigh     = $05;
+  {--Serial--}
+  Baud2400       = $01;
+  Baud4800       = $02;
+  Baud9600       = $03;
+  Baud19200      = $04;
+  Baud38400      = $05;
+  Baud57600      = $06;
+  Baud115200     = $07;
+  Baud230400     = $08;
+  Baud460800     = $09;
+  Baud921600     = $0A;
+  ParityNone     = $00;
+  ParityEven     = $01;
+  ParityOdd      = $02;
+  StopBits1      = $00;
+  StopBits2      = $01;
   {Misc}
   DefaultTimeout = 1000;
 

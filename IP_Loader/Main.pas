@@ -42,6 +42,7 @@ type
   private
     { Private declarations }
     procedure GenerateResetSignal;
+    procedure SetSerialConfiguration;
   public
     { Public declarations }
   end;
@@ -173,6 +174,20 @@ begin
           if XBee.GetItem(udpIO2Timer, Value) then
             if (Value = 1) or XBee.SetItem(udpIO2Timer, 1) then                               {Ensure DIO2's timer is set to 100 ms}
               XBee.SetItem(udpOutputState, $0000);                                            {Start reset pulse}
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+procedure TForm1.SetSerialConfiguration;
+var
+  Value : Cardinal;
+begin
+  if XBee.GetItem(udpSerialBaud, Value) then
+    if (Value = Baud115200) or XBee.SetItem(udpSerialBaud, Baud115200) then                   {Ensure baud rate is 115,200 bps}
+      if XBee.GetItem(udpSerialParity, Value) then
+        if (Value = ParityNone) or XBee.SetItem(udpSerialParity, ParityNone) then             {Ensure parity is none}
+          if XBee.GetItem(udpSerialStopBits, Value) then
+            if (Value = StopBits1) or XBee.SetItem(udpSerialStopBits, StopBits1) then;         {Ensure stop bits is 1}
 end;
 
 
