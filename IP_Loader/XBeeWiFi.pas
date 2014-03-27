@@ -3,7 +3,7 @@ unit XBeeWiFi;
 interface
 
 uses
-  System.SysUtils, System.StrUtils,
+  System.SysUtils, System.StrUtils, System.Math,
   FMX.Dialogs,
   IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack;
 
@@ -101,27 +101,36 @@ type
     FPRxBuf       : PxbRxPacket;              {Pointer to structured receive packet (shares memory space with RxBuf)}
     FResponseList : array of TResponse;       {Dynamic array of received responses (from packet's parameter field); multiple XBee may respond to broadcast message}
     {XBeeWiFi Metrics}
-    FIPAddr       : String;                   {IP address to contact (if TargetIP not provided in method calls}
-    FLocalUDPPort : Cardinal;                 {Local bound port for UDP communications}
+    FIPAddr       : String;                   {IP address to contact (if TargetIP not provided in method calls)}
+    FIPPort       : Cardinal;                 {IP port to contact (if TargetIP not provided in method calls)}
     FTimeout      : Cardinal;                 {Timeout for UDP responses}
     {Getters and Setters}
     function  GetLocalUDPPort: Cardinal;
     procedure SetLocalUDPPort(Value: Cardinal);
+    function  GetLocalTCPPort: Cardinal;
+    procedure SetLocalTCPPort(Value: Cardinal);
   public
     { Public declarations }
     constructor Create;
     destructor Destroy;
     {XBee communication methods}
+    { TODO : Determine best way to deal with IPs and Ports. }
     function  GetItem(Command: udpCommand; var Str: String; TargetIP: String = ''): Boolean; overload;
     function  GetItem(Command: udpCommand; var StrList: TSimpleStringList; TargetIP: String = ''): Boolean; overload;
     function  GetItem(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''): Boolean; overload;
     function  GetItem(Command: udpCommand; var NumList: TSimpleNumberList; TargetIP: String = ''): Boolean; overload;
     function  SetItem(Command: udpCommand; Str: String; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean; overload;
     function  SetItem(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean; overload;
+    function  ConnectStream(TargetPort: Cardinal = 0; TargetIP: String = ''): Boolean;
+    function  DisconnectStream: Boolean;
+    function  Send(Data: TIDBytes): Boolean;
+    function  Receive(var Data: TIDBytes; Count: Integer): Boolean;
     {Class properties}
     { TODO : Make setter for IPAddr property }
     property IPAddr : String read FIPAddr write FIPAddr;
+    property IPPort : Cardinal read FIPPort write FIPPort;
     property LocalUDPPort : Cardinal read GetLocalUDPPort write SetLocalUDPPort;
+    property LocalTCPPort : Cardinal read GetLocalTCPPort write SetLocalTCPPort;
     property Timeout : Cardinal read FTimeout write FTimeout;
   private
     { Private declarations }
@@ -180,6 +189,21 @@ procedure TXBeeWiFi.SetLocalUDPPort(Value: Cardinal);
 begin
   if (Value <= $10000) and (Value <> FUDPClient.BoundPort) then
     FUDPClient.BoundPort := Value;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.GetLocalTCPPort: Cardinal;
+begin
+  Result := FTCPClient.BoundPort;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+procedure TXBeeWiFi.SetLocalTCPPort(Value: Cardinal);
+begin
+  if (Value <= $10000) and (Value <> FTCPClient.BoundPort) then
+    FTCPClient.BoundPort := Value;
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -313,7 +337,7 @@ const
     {----------------}
 
 begin
-{ TODO : Remove dugging Info }
+{ TODO : Remove debugging Info }
 //  self.Caption := 'Transmitting...';
   Result := False;                                                                                           {Initialize result to false}
   RequiredRx := 0;                                                                                           {Initialize required reception to none}
@@ -377,6 +401,73 @@ function TXBeeWiFi.SetItem(Command: udpCommand; Num: Cardinal; TargetIP: String 
  The full response packet can be seen in PRxBuf.}
 begin
   Result := SetItem(Command, inttostr(Num), TargetIP);
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.ConnectStream(TargetPort: Cardinal = 0; TargetIP: String = ''): Boolean;
+begin
+  Result := False;
+  try
+    try
+      if FTCPClient.Connected then raise Exception.Create('Already connected.');
+      FTCPClient.Host := ifthen(TargetIP <> '', TargetIP, FIPAddr);
+      FTCPClient.Port := ifthen(TargetPort > 0, TargetPort, FIPPort);
+      FTCPClient.Connect;
+    except
+      Result := False;
+    end;
+  finally
+    Result := True;
+  end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.DisconnectStream: Boolean;
+begin
+  Result := False;
+  try
+    try
+      if FTCPClient.Connected then FTCPClient.Disconnect;
+    except
+      Result := False;
+    end;
+  finally
+    Result := True;
+  end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.Send(Data: TIDBytes): Boolean;
+{Send data with TCP}
+begin
+  Result := False;
+  if FTCPClient.Connected then
+    begin
+    try
+      FTCPClient.IOHandler.WriteDirect(Data);
+    finally
+      Result := True;
+    end;
+    end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.Receive(var Data: TIDBytes; Count: Integer): Boolean;
+{Receive data with TCP}
+begin
+  Result := False;
+  if FTCPClient.IOHandler.Connected then
+    begin
+    try
+      FTCPClient.IOHandler.ReadBytes(Data, Count);
+    finally
+      Result := True;
+    end;
+    end;
 end;
 
 {----------------------------------------------------------------------------------------------------}

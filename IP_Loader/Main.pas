@@ -5,7 +5,7 @@ interface
 uses
   System.SysUtils, System.StrUtils, System.Types, System.UITypes, System.Classes, System.Variants, System.Math,
   FMX.Types, FMX.Graphics, FMX.Controls, FMX.Forms, FMX.Dialogs, FMX.StdCtrls, FMX.Edit, FMX.ListBox,
-  XBeeWiFi, IdBaseComponent, IdComponent, IdRawBase, IdRawClient, IdIcmpClient;
+  XBeeWiFi, IdGlobal, IdBaseComponent, IdComponent, IdRawBase, IdRawClient, IdIcmpClient;
 
 type
   {Define XBee Info record}
@@ -32,6 +32,7 @@ type
     IPAddr: TEdit;
     MACAddr: TEdit;
     PingClient: TIdIcmpClient;
+    TransmitButton: TButton;
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure IdentifyButtonClick(Sender: TObject);
@@ -39,6 +40,7 @@ type
     procedure FormCreate(Sender: TObject);
     procedure PCPortComboChange(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
+    procedure TransmitButtonClick(Sender: TObject);
   private
     { Private declarations }
     procedure GenerateResetSignal;
@@ -51,7 +53,8 @@ var
   Form1    : TForm1;
   XBee     : TXBeeWiFi;
   XBeeList : array of TXBee;           {Dynamic array of XBee Info records}
-
+  TxBuf    : TIdBytes;                 {Transmit packet (resized per packet)}
+  RxBuf    : TIdBytes;                 {Receive packet (resized on receive)}
 
 const
   Timeout        = 1000;
@@ -151,6 +154,7 @@ begin
   IPAddr.Text := XBeeList[PCPortCombo.Selected.Index].IPAddr;
   XBee.IPAddr := IPAddr.Text;
   IPPort.Text := inttostr(XBeeList[PCPortCombo.Selected.Index].IPPort);
+  XBee.IPPort := strtoint(IPPort.Text);
   NodeID.Text := XBeeList[PCPortCombo.Selected.Index].NodeID;
   MacAddr.Text := FormatMACAddr(XBeeList[PCPortCombo.Selected.Index].MacAddrHigh, XBeeList[PCPortCombo.Selected.Index].MacAddrLow);
 end;
@@ -190,5 +194,22 @@ begin
             if (Value = StopBits1) or XBee.SetItem(udpSerialStopBits, StopBits1) then;         {Ensure stop bits is 1}
 end;
 
+{----------------------------------------------------------------------------------------------------}
+
+procedure TForm1.TransmitButtonClick(Sender: TObject);
+begin
+  if XBee.ConnectStream then
+    begin
+      try
+        SetLength(TxBuf, 3);
+        TxBuf[0] := $11;
+        TxBuf[1] := $22;
+        TxBuf[2] := $33;
+        XBee.Send(TxBuf);
+      finally
+        XBee.DisconnectStream;
+      end;
+    end;
+end;
 
 end.
