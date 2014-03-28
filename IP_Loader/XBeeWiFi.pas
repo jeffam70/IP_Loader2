@@ -145,7 +145,7 @@ type
   private
     { Private declarations }
     procedure PrepareBuffer(Command: udpCommand; ParamStr: String = ''; ParamNum: Integer = -1; ParamData: TIdBytes = nil; RequestPacketAck: Boolean = True);
-    function  TransmitUDP(TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
+    function  TransmitUDP(TargetIP: String = ''; TargetPort: Cardinal = 0; ExpectMultiple: Boolean = False): Boolean;
   end;
 
   {Non-object functions and procedures}
@@ -274,7 +274,7 @@ begin
 { TODO : Check all comments }
   SetLength(StrList, 0);
   PrepareBuffer(Command);                                                                                    {Prepare command packet}
-  Result := TransmitUDP(TargetIP, True);                                                                     {and transmit it}
+  Result := TransmitUDP(TargetIP, 0, True);                                                                  {and transmit it}
   if Result then                                                                                             {If response received}
     begin                                                                                                    {  Copy data to StrList}
     for Idx := 0 to High(FResponseList) do
@@ -314,7 +314,7 @@ var
 begin
   SetLength(NumList, 0);
   PrepareBuffer(Command);                                                                                    {Prepare command packet}
-  Result := TransmitUDP(TargetIP, True);                                                                     {and transmit it}
+  Result := TransmitUDP(TargetIP, 0, True);                                                                  {and transmit it}
   if Result then                                                                                             {If response received}
     begin                                                                                                    {  Copy data to NumList}
     for RIdx := 0 to High(FResponseList) do
@@ -498,7 +498,7 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.TransmitUDP(TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
+function TXBeeWiFi.TransmitUDP(TargetIP: String = ''; TargetPort: Cardinal = 0; ExpectMultiple: Boolean = False): Boolean;
 {Transmit UDP packet already prepared by a call to PrepareBuffer.
  Returns True if successful, False otherwise.
  Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
@@ -539,7 +539,7 @@ begin
   SetLength(FResponseList, 0);                                                                               {Clear the response list}
   try
     {Try to transmit; IP exceptions handled}
-    FUDPClient.SendBuffer(ifthen(TargetIP <> '', TargetIP, FIPAddr), $BEE, FTxBuf);                          {Send to TargetIP or GUI-displayed IP}
+    FUDPClient.SendBuffer(ifthen(TargetIP <> '', TargetIP, FIPAddr), ifthen(TargetPort > 0, TargetPort, $BEE), FTxBuf);  {Send to TargetIP or GUI-displayed IP}
     {Transmitted fine, retrieve}
     while (RequiredRx < GotItAll+ord(ExpectMultiple)*MuliRsp) and UDPResponse do                             {For every UDP Packet received (until we've received the expected packets)}
       begin {Process each UDP packet received}
