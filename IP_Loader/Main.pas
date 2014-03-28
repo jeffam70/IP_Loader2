@@ -93,7 +93,7 @@ procedure TForm1.Button1Click(Sender: TObject);
 //var
 //  IP : TIDStack;
 begin
-  XBee.SetItem(udpIO2State, pinOutHigh);
+  XBee.SetItem(xbIO2State, pinOutHigh);
 //  IP := TIDStack.Create;
 //  IP.NewInstance;
 //  IPAddr.Text := IP.LocalAddress;
@@ -104,7 +104,7 @@ end;
 
 procedure TForm1.Button2Click(Sender: TObject);
 begin
-  XBee.SetItem(udpIO2State, pinOutLow);
+  XBee.SetItem(xbIO2State, pinOutLow);
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -123,7 +123,7 @@ begin
   NodeID.Text := '';
 { TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
   XBee.TargetIPAddr := '192.168.1.255';
-  if XBee.GetItem(udpIPAddr, Nums) then
+  if XBee.GetItem(xbIPAddr, Nums) then
     begin
     for Idx := 0 to High(Nums) do
       begin
@@ -132,10 +132,10 @@ begin
       PXB.CfgChecksum := CSumUnknown;
       PXB.IPAddr := FormatIPAddr(Nums[Idx]);
       XBee.TargetIPAddr := PXB.IPAddr;
-      if XBee.GetItem(udpIPPort, PXB.IPPort) then
-        if XBee.GetItem(udpMacHigh, PXB.MacAddrHigh) then
-          if XBee.GetItem(udpMacLow, PXB.MacAddrLow) then
-            if XBee.GetItem(udpNodeID, PXB.NodeID) then
+      if XBee.GetItem(xbIPPort, PXB.IPPort) then
+        if XBee.GetItem(xbMacHigh, PXB.MacAddrHigh) then
+          if XBee.GetItem(xbMacLow, PXB.MacAddrLow) then
+            if XBee.GetItem(xbNodeID, PXB.NodeID) then
               begin
               PXB.PCPort := 'XB' + rightstr(inttostr(PXB.MacAddrLow), 2);
               PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB));
@@ -175,7 +175,7 @@ procedure TForm1.GenerateResetSignal;
 {Generate Reset Pulse}
 begin
 { TODO : Enhance GenerateResetSignal for errors. }
-  if EnforceXBeeConfiguration then XBee.SetItem(udpOutputState, $0000);            {Start reset pulse}
+  if EnforceXBeeConfiguration then XBee.SetItem(xbOutputState, $0000);            {Start reset pulse}
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -186,7 +186,7 @@ function TForm1.EnforceXBeeConfiguration: Boolean;
 
     {----------------}
 
-    function Validate(Attribute: udpCommand; Value: Cardinal; ReadOnly: Boolean = False): Boolean;
+    function Validate(Attribute: xbCommand; Value: Cardinal; ReadOnly: Boolean = False): Boolean;
     {Check if XBee Attribute is equal to Value; if not, set it as such.
      Set ReadOnly if attribute should be read and compared, but not written.
      Returns True upon exit if Attribute = Value.}
@@ -207,17 +207,17 @@ function TForm1.EnforceXBeeConfiguration: Boolean;
 begin
 { TODO : Enhance Enforce... to log any error }
   Result := (XBeeList[PCPortCombo.Selected.Index].CfgChecksum <> CSumUnknown) and            {Is the configuration known and valid?}
-            (Validate(udpChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum, True));
+            (Validate(xbChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum, True));
   if not Result then                                                                         {  If not...}
     begin
-    Validate(udpIO2State, pinOutHigh);                                                       {    Ensure I/O is set to output high}
-    Validate(udpOutputMask, $7FFF);                                                          {    Ensure output mask is proper (default, in this case)}
-    Validate(udpIO2Timer, 1);                                                                {    Ensure DIO2's timer is set to 100 ms}
-//    Validate(udpSerialMode, TransparentMode);                                                {    Ensure Serial Mode is transparent}
-    Validate(udpSerialBaud, Baud115200);                                                     {    Ensure baud rate is 115,200 bps}
-    Validate(udpSerialParity, ParityNone);                                                   {    Ensure parity is none}
-    Validate(udpSerialStopBits, StopBits1);                                                  {    Ensure stop bits is 1}
-    XBee.GetItem(udpChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum);             {    Record new configuration checksum}
+    Validate(xbIO2State, pinOutHigh);                                                       {    Ensure I/O is set to output high}
+    Validate(xbOutputMask, $7FFF);                                                          {    Ensure output mask is proper (default, in this case)}
+    Validate(xbIO2Timer, 1);                                                                {    Ensure DIO2's timer is set to 100 ms}
+    Validate(xbSerialMode, TransparentMode);                                                {    Ensure Serial Mode is transparent}
+    Validate(xbSerialBaud, Baud115200);                                                     {    Ensure baud rate is 115,200 bps}
+    Validate(xbSerialParity, ParityNone);                                                   {    Ensure parity is none}
+    Validate(xbSerialStopBits, StopBits1);                                                  {    Ensure stop bits is 1}
+    XBee.GetItem(xbChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum);             {    Record new configuration checksum}
     Result := True;
     end;
 end;
@@ -266,7 +266,7 @@ begin
 
       XBee.SendUDP(TxBuf);
 //      GenerateResetSignal;
-//      XBee.SetItem(udpData, $0000);
+//      XBee.SetItem(xbData, $0000);
 //      XBee.Send(TxBuf);
 //    finally
 //      XBee.DisconnectTCP;
