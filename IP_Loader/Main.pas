@@ -226,20 +226,23 @@ procedure TForm1.TransmitButtonClick(Sender: TObject);
 begin
   GenerateResetSignal;         {(Enforce XBee Configuration and...) Generate reset signal}
   IndySleep(190);
-  if XBee.ConnectTCP then
-    begin
-    try
-      SetLength(TxBuf, 3);
-      TxBuf[0] := $11;
-      TxBuf[1] := $22;
-      TxBuf[2] := $33;
+//  if XBee.ConnectTCP then
+//    begin
+//    try
+      SetLength(TxBuf, 5);
+      TxBuf[0] := $1;
+      TxBuf[1] := $2;
+      TxBuf[2] := $3;
+      TxBuf[3] := $4;
+      TxBuf[4] := $5;
+      XBee.SendUDP(TxBuf);
 //      GenerateResetSignal;
-      XBee.SetItem(udpData, $0000);
+//      XBee.SetItem(udpData, $0000);
 //      XBee.Send(TxBuf);
-    finally
-      XBee.DisconnectTCP;
-    end;
-    end;
+//    finally
+//      XBee.DisconnectTCP;
+//    end;
+//    end;
 end;
 
 end.

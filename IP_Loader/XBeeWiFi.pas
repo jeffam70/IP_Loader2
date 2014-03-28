@@ -127,8 +127,8 @@ type
     function  SetItem(Command: udpCommand; Str: String; TargetIP: String = ''): Boolean; overload;
     function  SetItem(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean; overload;
     {XBee UDP data methods}
-    function  SendUDP(Data: TIDBytes): Boolean;
-    function  ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;
+    function  SendUDP(Data: TIDBytes; TargetIP: String = ''): Boolean;
+    function  ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal; TargetIP: String = ''): Boolean;
     {XBee TCP data methods}
     function  ConnectTCP(TargetPort: Cardinal = 0; TargetIP: String = ''): Boolean;
     function  DisconnectTCP: Boolean;
@@ -353,18 +353,22 @@ begin
 end;
 
 {----------------------------------------------------------------------------------------------------}
-function TXBeeWiFi.SendUDP(Data: TIDBytes): Boolean;
-{Send UDP data packet.  Data must be sized to exactly the number of bytes to transmit.
- Returns True if successful, False if not.}
-begin
 
+function TXBeeWiFi.SendUDP(Data: TIDBytes; TargetIP: String = ''): Boolean;
+{Send UDP data packet.  Data must be sized to exactly the number of bytes to transmit.
+ Returns True if successful, False if not.
+ Set TargetIP if other than IPAddr should be used.}
+begin
+  PrepareBuffer(udpData, '', -1, Data);                                                                      {Prepare data packet}
+  Result := TransmitUDP(TargetIP);                                                                           {and transmit it}
 end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;
+function TXBeeWiFi.ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal; TargetIP: String = ''): Boolean;
 {Receive UDP data packet.  Data will be resized to exactly the number of bytes recieved.
- Returns True if successful, False if not.}
+ Returns True if successful, False if not.
+ Set TargetIP if other than IPAddr should be used.}
 begin
 
 end;
@@ -487,7 +491,7 @@ begin
       Move(ParamStr, FPTxBuf.ParameterValue[0], ParamLength)                           {  append Parameter as a string}
     else
       if Command = udpData then
-        Move(ParamData, FPTxBuf.FrameID, ParamLength)                                  {  or as a data stream}
+        Move(ParamData[0], FPTxBuf.FrameID, ParamLength)                               {  or as a data stream}
       else
         Move(ParamValue, FPTxBuf.ParameterValue[0], ParamLength);                      {  or as a numeric value}
 end;
