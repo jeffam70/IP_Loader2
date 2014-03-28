@@ -106,8 +106,8 @@ type
     FPRxBuf       : PxbRxPacket;              {Pointer to structured receive packet (shares memory space with RxBuf)}
     FResponseList : array of TResponse;       {Dynamic array of received responses (from packet's parameter field); multiple XBee may respond to broadcast message}
     {XBeeWiFi Metrics}
-    FIPAddr       : String;                   {IP address to contact (if TargetIP not provided in method calls)}
-    FIPPort       : Cardinal;                 {IP port to contact (if TargetIP not provided in method calls)}
+    FTargetIPAddr : String;                   {IP address to contact}
+    FTargetIPPort : Cardinal;                 {IP port to contact}
     FTimeout      : Cardinal;                 {Timeout for UDP responses}
     {Getters and Setters}
     function  GetLocalUDPPort: Cardinal;
@@ -120,32 +120,32 @@ type
     destructor Destroy;
     {XBee configuration methods}
     { TODO : Determine best way to deal with IPs and Ports. }
-    function  GetItem(Command: udpCommand; var Str: String; TargetIP: String = ''): Boolean; overload;
-    function  GetItem(Command: udpCommand; var StrList: TSimpleStringList; TargetIP: String = ''): Boolean; overload;
-    function  GetItem(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''): Boolean; overload;
-    function  GetItem(Command: udpCommand; var NumList: TSimpleNumberList; TargetIP: String = ''): Boolean; overload;
-    function  SetItem(Command: udpCommand; Str: String; TargetIP: String = ''): Boolean; overload;
-    function  SetItem(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean; overload;
+    function  GetItem(Command: udpCommand; var Str: String): Boolean; overload;
+    function  GetItem(Command: udpCommand; var StrList: TSimpleStringList): Boolean; overload;
+    function  GetItem(Command: udpCommand; var Num: Cardinal): Boolean; overload;
+    function  GetItem(Command: udpCommand; var NumList: TSimpleNumberList): Boolean; overload;
+    function  SetItem(Command: udpCommand; Str: String): Boolean; overload;
+    function  SetItem(Command: udpCommand; Num: Cardinal): Boolean; overload;
     {XBee UDP data methods}
-    function  SendUDP(Data: TIDBytes; TargetIP: String = ''): Boolean;
-    function  ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal; TargetIP: String = ''): Boolean;
+    function  SendUDP(Data: TIDBytes): Boolean;
+    function  ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;
     {XBee TCP data methods}
-    function  ConnectTCP(TargetPort: Cardinal = 0; TargetIP: String = ''): Boolean;
+    function  ConnectTCP: Boolean;
     function  DisconnectTCP: Boolean;
     { TODO : Make TCP methods consistent }
     function  SendTCP(Data: TIDBytes): Boolean;
     function  ReceiveTCP(var Data: TIDBytes; Count: Integer): Boolean;
     {Class properties}
     { TODO : Make setter for IPAddr property }
-    property IPAddr : String read FIPAddr write FIPAddr;
-    property IPPort : Cardinal read FIPPort write FIPPort;
+    property TargetIPAddr : String read FTargetIPAddr write FTargetIPAddr;
+    property TargetIPPort : Cardinal read FTargetIPPort write FTargetIPPort;
     property LocalUDPPort : Cardinal read GetLocalUDPPort write SetLocalUDPPort;
     property LocalTCPPort : Cardinal read GetLocalTCPPort write SetLocalTCPPort;
     property Timeout : Cardinal read FTimeout write FTimeout;
   private
     { Private declarations }
     procedure PrepareBuffer(Command: udpCommand; ParamStr: String = ''; ParamNum: Integer = -1; ParamData: TIdBytes = nil; RequestPacketAck: Boolean = True);
-    function  TransmitUDP(TargetIP: String = ''; TargetPort: Cardinal = 0; ExpectMultiple: Boolean = False): Boolean;
+    function  TransmitUDP(ExpectMultiple: Boolean = False): Boolean;
   end;
 
   {Non-object functions and procedures}
@@ -248,23 +248,21 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.GetItem(Command: udpCommand; var Str: String; TargetIP: String = ''): Boolean;
+function TXBeeWiFi.GetItem(Command: udpCommand; var Str: String): Boolean;
 {Retrieve XBee attribute string (Str) and return True if successful; False otherwise.
- Set TargetIP if other than IPAddr.Text should be used.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  Though it parses and returns the response as a string in Str, the full response packet can be seen in PRxBuf.}
 begin
   Str := '';
   PrepareBuffer(Command);                                                                                    {Prepare command packet}
-  Result := TransmitUDP(TargetIP);                                                                           {and transmit it}
+  Result := TransmitUDP;                                                                                     {and transmit it}
   if Result then Str := StrPas(PAnsiChar(@FResponseList[0].Data));                                           {If response received, copy data to Str}
 end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.GetItem(Command: udpCommand; var StrList: TSimpleStringList; TargetIP: String = ''): Boolean;
+function TXBeeWiFi.GetItem(Command: udpCommand; var StrList: TSimpleStringList): Boolean;
 {Retrieve XBee attribute strings (StrList) and return True if successful; False otherwise.
- Set TargetIP if other than IPAddr.Text should be used.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  Though it parses and returns the response as a string in Str, the full response packet can be seen in PRxBuf.}
 var
@@ -274,7 +272,7 @@ begin
 { TODO : Check all comments }
   SetLength(StrList, 0);
   PrepareBuffer(Command);                                                                                    {Prepare command packet}
-  Result := TransmitUDP(TargetIP, 0, True);                                                                  {and transmit it}
+  Result := TransmitUDP(True);                                                                               {and transmit it}
   if Result then                                                                                             {If response received}
     begin                                                                                                    {  Copy data to StrList}
     for Idx := 0 to High(FResponseList) do
@@ -287,9 +285,8 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.GetItem(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''): Boolean;
+function TXBeeWiFi.GetItem(Command: udpCommand; var Num: Cardinal): Boolean;
 {Retrieve XBee attribute value (Num) and return True if successful; False otherwise.
- Set TargetIP if other than IPAddr.Text should be used.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  Though it parses and returns the response as a cardinal in Num, the full response packet can be seen in PRxBuf.}
 var
@@ -297,15 +294,14 @@ var
 begin
   Num := 0;
   PrepareBuffer(Command);                                                                                    {Prepare command packet}
-  Result := TransmitUDP(TargetIP);                                                                           {and transmit it}
+  Result := TransmitUDP;                                                                                     {and transmit it}
   if Result then for Idx := 0 to FResponseList[0].Length-1 do Num := Num shl 8 + FResponseList[0].Data[Idx]; {If response received, convert from big-endian}
 end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.GetItem(Command: udpCommand; var NumList: TSimpleNumberList; TargetIP: String = ''): Boolean;
+function TXBeeWiFi.GetItem(Command: udpCommand; var NumList: TSimpleNumberList): Boolean;
 {Retrieve XBee attribute values (NumList) and return True if successful; False otherwise.
- Set TargetIP if other than IPAddr.Text should be used.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  Though it parses and returns the response as a cardinal in Num, the full response packet can be seen in PRxBuf.}
 var
@@ -314,7 +310,7 @@ var
 begin
   SetLength(NumList, 0);
   PrepareBuffer(Command);                                                                                    {Prepare command packet}
-  Result := TransmitUDP(TargetIP, 0, True);                                                                  {and transmit it}
+  Result := TransmitUDP(True);                                                                               {and transmit it}
   if Result then                                                                                             {If response received}
     begin                                                                                                    {  Copy data to NumList}
     for RIdx := 0 to High(FResponseList) do
@@ -329,60 +325,55 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.SetItem(Command: udpCommand; Str: String; TargetIP: String = ''): Boolean;
+function TXBeeWiFi.SetItem(Command: udpCommand; Str: String): Boolean;
 {Set XBee attribute to string (Str) and return True if successful; False otherwise.
- Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
- when a broadcast packet is being transmitted.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  The full response packet can be seen in PRxBuf.}
 begin
   PrepareBuffer(Command, Str);                                                                               {Prepare command packet}
-  Result := TransmitUDP(TargetIP);                                                                           {and transmit it}
+  Result := TransmitUDP;                                                                                     {and transmit it}
 end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.SetItem(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean;
+function TXBeeWiFi.SetItem(Command: udpCommand; Num: Cardinal): Boolean;
 {Set XBee attribute to value (Num) and return True if successful; False otherwise.
- Set TargetIP if other than IPAddr should be used.
  This method creates and sends a UDP packet, and checks and validates the response (if any).}
 begin
 { TODO : Fix SetItem Num; it fails on 0 because that's a null string. }
   PrepareBuffer(Command, '', Num);                                                                           {Prepare command packet}
-  Result := TransmitUDP(TargetIP);                                                                           {and transmit it}
+  Result := TransmitUDP;                                                                                     {and transmit it}
 end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.SendUDP(Data: TIDBytes; TargetIP: String = ''): Boolean;
+function TXBeeWiFi.SendUDP(Data: TIDBytes): Boolean;
 {Send UDP data packet.  Data must be sized to exactly the number of bytes to transmit.
- Returns True if successful, False if not.
- Set TargetIP if other than IPAddr should be used.}
+ Returns True if successful, False if not.}
 begin
   PrepareBuffer(udpData, '', -1, Data);                                                                      {Prepare data packet}
-  Result := TransmitUDP(TargetIP);                                                                           {and transmit it}
+  Result := TransmitUDP;                                                                                     {and transmit it}
 end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal; TargetIP: String = ''): Boolean;
+function TXBeeWiFi.ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;
 {Receive UDP data packet.  Data will be resized to exactly the number of bytes recieved.
- Returns True if successful, False if not.
- Set TargetIP if other than IPAddr should be used.}
+ Returns True if successful, False if not.}
 begin
-
+{ TODO : Make ReceivedUDP }
 end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.ConnectTCP(TargetPort: Cardinal = 0; TargetIP: String = ''): Boolean;
+function TXBeeWiFi.ConnectTCP: Boolean;
 begin
   Result := False;
   try
     try
       if FTCPClient.Connected then raise Exception.Create('Already connected.');
-      FTCPClient.Host := ifthen(TargetIP <> '', TargetIP, FIPAddr);
-      FTCPClient.Port := ifthen(TargetPort > 0, TargetPort, FIPPort);
+      FTCPClient.Host := FTargetIPAddr;
+      FTCPClient.Port := FTargetIPPort;
       FTCPClient.Connect;
     except
       Result := False;
@@ -498,11 +489,10 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.TransmitUDP(TargetIP: String = ''; TargetPort: Cardinal = 0; ExpectMultiple: Boolean = False): Boolean;
+function TXBeeWiFi.TransmitUDP(ExpectMultiple: Boolean = False): Boolean;
 {Transmit UDP packet already prepared by a call to PrepareBuffer.
  Returns True if successful, False otherwise.
- Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
- when a broadcast packet is being transmitted.
+ Set ExpectMultiple true if multiple responses possible, such as when a broadcast packet is being transmitted.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  The full response packet can be seen in PRxBuf.}
 var
@@ -539,7 +529,7 @@ begin
   SetLength(FResponseList, 0);                                                                               {Clear the response list}
   try
     {Try to transmit; IP exceptions handled}
-    FUDPClient.SendBuffer(ifthen(TargetIP <> '', TargetIP, FIPAddr), ifthen(TargetPort > 0, TargetPort, $BEE), FTxBuf);  {Send to TargetIP or GUI-displayed IP}
+    FUDPClient.SendBuffer(FTargetIPAddr, $BEE, FTxBuf);                                                      {Send to TargetIP or GUI-displayed IP}
     {Transmitted fine, retrieve}
     while (RequiredRx < GotItAll+ord(ExpectMultiple)*MuliRsp) and UDPResponse do                             {For every UDP Packet received (until we've received the expected packets)}
       begin {Process each UDP packet received}

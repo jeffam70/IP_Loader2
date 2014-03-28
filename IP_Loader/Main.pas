@@ -122,7 +122,8 @@ begin
   IPPort.Text := '';
   NodeID.Text := '';
 { TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
-  if XBee.GetItem(udpIPAddr, Nums, '192.168.1.255') then
+  XBee.TargetIPAddr := '192.168.1.255';
+  if XBee.GetItem(udpIPAddr, Nums) then
     begin
     for Idx := 0 to High(Nums) do
       begin
@@ -130,10 +131,11 @@ begin
       PXB := @XBeeList[High(XBeeList)];
       PXB.CfgChecksum := CSumUnknown;
       PXB.IPAddr := FormatIPAddr(Nums[Idx]);
-      if XBee.GetItem(udpIPPort, PXB.IPPort, PXB.IPAddr) then
-        if XBee.GetItem(udpMacHigh, PXB.MacAddrHigh, PXB.IPAddr) then
-          if XBee.GetItem(udpMacLow, PXB.MacAddrLow, PXB.IPAddr) then
-            if XBee.GetItem(udpNodeID, PXB.NodeID, PXB.IPAddr) then
+      XBee.TargetIPAddr := PXB.IPAddr;
+      if XBee.GetItem(udpIPPort, PXB.IPPort) then
+        if XBee.GetItem(udpMacHigh, PXB.MacAddrHigh) then
+          if XBee.GetItem(udpMacLow, PXB.MacAddrLow) then
+            if XBee.GetItem(udpNodeID, PXB.NodeID) then
               begin
               PXB.PCPort := 'XB' + rightstr(inttostr(PXB.MacAddrLow), 2);
               PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB));
@@ -155,9 +157,9 @@ end;
 procedure TForm1.PCPortComboChange(Sender: TObject);
 begin
   IPAddr.Text := XBeeList[PCPortCombo.Selected.Index].IPAddr;
-  XBee.IPAddr := IPAddr.Text;
+  XBee.TargetIPAddr := IPAddr.Text;
   IPPort.Text := inttostr(XBeeList[PCPortCombo.Selected.Index].IPPort);
-  XBee.IPPort := strtoint(IPPort.Text);
+  XBee.TargetIPPort := strtoint(IPPort.Text);
   NodeID.Text := XBeeList[PCPortCombo.Selected.Index].NodeID;
   MacAddr.Text := FormatMACAddr(XBeeList[PCPortCombo.Selected.Index].MacAddrHigh, XBeeList[PCPortCombo.Selected.Index].MacAddrLow);
 end;

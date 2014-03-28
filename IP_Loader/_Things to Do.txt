@@ -6,7 +6,6 @@ THINGS TO DO
 * Enhance to Identify
   * Set up proper Broadcast addresses
   * Use TIdStack.IsIP to check for valid IP address
-  * Support Configuration Checksum
 
 * Handle errors
   * TCP connection
@@ -41,6 +40,8 @@ THINGS DONE
   * Retrieve and display MAC address
   * Create Pseudo-Communication port number
   * Accept multiple responses
+* Support Configuration Checksum
+
 
 * Add TCP
   * To connect
