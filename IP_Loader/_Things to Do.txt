@@ -12,6 +12,7 @@ THINGS TO DO
   * TCP connection
   * Propeller Protocol
   * Prompts
+  * Dropped UDP Packets
 
 * Add TCP
   * To transmit image
@@ -22,6 +23,9 @@ THINGS TO DO
   * Determine how to find local addresses and subnet masks
   * Recording and restoring previous settings when done
     * This may be simpler with a single command, if there is one.
+  * Could use I/O pin to instantiate flow control for a certain amount of time during reset,
+    this way we can time serial output's start in relation to reset better.
+  * Could stick to UDP for data because it's less overhead and timing in relation to reset is easer.
 
 
 THINGS DONE

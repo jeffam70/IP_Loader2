@@ -11,9 +11,11 @@ type
   {Define XBee WiFi's udp commands}
   {IMPORTANT: Do not rearrange, append, or delete from this list without similarly modifying the ATCmd constant array}
   udpCommand = (udpMacHigh, udpMacLow, udpSSID, udpIPAddr, udpIPMask, udpIPGateway, udpIPPort, udpNodeID, udpMaxRFPayload, udpIO2State,
-                udpOutputMask, udpOutputState, udpIO2Timer, udpSerialBaud, udpSerialParity, udpSerialStopBits);
+                udpOutputMask, udpOutputState, udpIO2Timer, udpSerialMode, udpSerialBaud, udpSerialParity, udpSerialStopBits, udpChecksum,
+                udpData);
 
 const
+{ TODO : Change udpCommands to xbCommands }
   {Define XBee WiFi's AT commands}
   ATCmd : array[low(udpCommand)..high(udpCommand)] of Word =
     ({NOTES: [R] - read only, [R/W] = read/write, [s] - string, [b] - binary number, [sb] - string or binary number}
@@ -30,9 +32,12 @@ const
     {udpOutputMask}      Byte('O') + Byte('M') shl 8,  {[Rb/Wb] Output mask for all I/O pins (each 1=output pin, each 0=input pin) (15-bits on TH, 20-bits on SMT)}
     {udpOutputState}     Byte('I') + Byte('O') shl 8,  {[Rb/Wb] Output state for all I/O pins (each 1=high, each 0=low) (15-bits on TH, 20-bits on SMT).  Period affected by updIO2Timer}
     {udpIO2Timer}        Byte('T') + Byte('2') shl 8,  {[Rb/Wb] I/O 2 state timer (100 ms units; $0..$1770)}
+    {udpSerialMode}      Byte('A') + Byte('P') shl 8,  {[Rb/Wb] Serial mode (0=Transparent, 1=API wo/Escapes, 2=API w/Escapes)}
     {udpSerialBaud}      Byte('B') + Byte('D') shl 8,  {[Rb/Wb] serial baud rate ($1=2400, $2=4800, $3=9600, $4=19200, $5=38400, $6=57600, $7=115200, $8=230400, $9=460800, $A=921600)}
     {udpSerialParity}    Byte('N') + Byte('B') shl 8,  {[Rb/Wb] serial parity ($0=none, $1=even, $2=odd)}
-    {udpSerialStopBits}  Byte('S') + Byte('B') shl 8   {[Rb/Wb] serial stop bits ($0=one stop bit, $1=two stop bits)}
+    {udpSerialStopBits}  Byte('S') + Byte('B') shl 8,  {[Rb/Wb] serial stop bits ($0=one stop bit, $1=two stop bits)}
+    {udpChecksum}        Byte('C') + Byte('K') shl 8,  {[Rb] current configuration checksum (16-bits)}
+    {udpData}            $0000                         {[Rb/Wb] read/write data stream}
     );
 
   {Set of UDP Commands that take string parameters (instead of numeric parameters)}
@@ -113,18 +118,23 @@ type
     { Public declarations }
     constructor Create;
     destructor Destroy;
-    {XBee communication methods}
+    {XBee configuration methods}
     { TODO : Determine best way to deal with IPs and Ports. }
     function  GetItem(Command: udpCommand; var Str: String; TargetIP: String = ''): Boolean; overload;
     function  GetItem(Command: udpCommand; var StrList: TSimpleStringList; TargetIP: String = ''): Boolean; overload;
     function  GetItem(Command: udpCommand; var Num: Cardinal; TargetIP: String = ''): Boolean; overload;
     function  GetItem(Command: udpCommand; var NumList: TSimpleNumberList; TargetIP: String = ''): Boolean; overload;
-    function  SetItem(Command: udpCommand; Str: String; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean; overload;
+    function  SetItem(Command: udpCommand; Str: String; TargetIP: String = ''): Boolean; overload;
     function  SetItem(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean; overload;
-    function  ConnectStream(TargetPort: Cardinal = 0; TargetIP: String = ''): Boolean;
-    function  DisconnectStream: Boolean;
-    function  Send(Data: TIDBytes): Boolean;
-    function  Receive(var Data: TIDBytes; Count: Integer): Boolean;
+    {XBee UDP data methods}
+    function  SendUDP(Data: TIDBytes): Boolean;
+    function  ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;
+    {XBee TCP data methods}
+    function  ConnectTCP(TargetPort: Cardinal = 0; TargetIP: String = ''): Boolean;
+    function  DisconnectTCP: Boolean;
+    { TODO : Make TCP methods consistent }
+    function  SendTCP(Data: TIDBytes): Boolean;
+    function  ReceiveTCP(var Data: TIDBytes; Count: Integer): Boolean;
     {Class properties}
     { TODO : Make setter for IPAddr property }
     property IPAddr : String read FIPAddr write FIPAddr;
@@ -134,7 +144,8 @@ type
     property Timeout : Cardinal read FTimeout write FTimeout;
   private
     { Private declarations }
-    procedure PrepareBuffer(Command: udpCommand; Parameter: String; RequestPacketAck: Boolean);
+    procedure PrepareBuffer(Command: udpCommand; ParamStr: String = ''; ParamNum: Integer = -1; ParamData: TIdBytes = nil; RequestPacketAck: Boolean = True);
+    function  TransmitUDP(TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
   end;
 
   {Non-object functions and procedures}
@@ -143,32 +154,37 @@ type
 
 const
   {Network Header Metrics}
-  RemoteCommand  = $02;
+  DataCommand     = $00;
+  RemoteCommand   = $02;
   {Command Metrics}
-  FrameID        = $01;
-  QueueCommand   = $00;
-  ApplyCommand   = $02;
+  FrameID         = $01;
+  QueueCommand    = $00;
+  ApplyCommand    = $02;
+  {Serial Modes}
+  TransparentMode = $00;
+  APIwoEscapeMode = $01;
+  APIwEscapeMode  = $02;
   {--I/O--}
-  pinOutLow      = $04;
-  pinOutHigh     = $05;
+  pinOutLow       = $04;
+  pinOutHigh      = $05;
   {--Serial--}
-  Baud2400       = $01;
-  Baud4800       = $02;
-  Baud9600       = $03;
-  Baud19200      = $04;
-  Baud38400      = $05;
-  Baud57600      = $06;
-  Baud115200     = $07;
-  Baud230400     = $08;
-  Baud460800     = $09;
-  Baud921600     = $0A;
-  ParityNone     = $00;
-  ParityEven     = $01;
-  ParityOdd      = $02;
-  StopBits1      = $00;
-  StopBits2      = $01;
+  Baud2400        = $01;
+  Baud4800        = $02;
+  Baud9600        = $03;
+  Baud19200       = $04;
+  Baud38400       = $05;
+  Baud57600       = $06;
+  Baud115200      = $07;
+  Baud230400      = $08;
+  Baud460800      = $09;
+  Baud921600      = $0A;
+  ParityNone      = $00;
+  ParityEven      = $01;
+  ParityOdd       = $02;
+  StopBits1       = $00;
+  StopBits2       = $01;
   {Misc}
-  DefaultTimeout = 1000;
+  DefaultTimeout  = 1000;
 
 implementation
 
@@ -215,6 +231,7 @@ end;
 constructor TXBeeWiFi.Create;
 begin
   FTCPClient := TIdTCPClient.Create;             {Create TCP Client}
+  FTCPClient.UseNagle := False;                  {Disable Nagel Timer}
   FUDPClient := TIdUDPClient.Create;             {Create UDP Client}
   SetLength(FRxBuf, 1500);                       {Set receive buffer length}
   FPRxBuf := PxbRxPacket(@FRxBuf[0]);            {Point PRxBuf at RxBuf}
@@ -238,8 +255,9 @@ function TXBeeWiFi.GetItem(Command: udpCommand; var Str: String; TargetIP: Strin
  Though it parses and returns the response as a string in Str, the full response packet can be seen in PRxBuf.}
 begin
   Str := '';
-  Result := SetItem(Command, '', TargetIP);                                                {Send packet}
-  if Result then Str := StrPas(PAnsiChar(@FResponseList[0].Data));                         {Copy data to Str}
+  PrepareBuffer(Command);                                                                                    {Prepare command packet}
+  Result := TransmitUDP(TargetIP);                                                                           {and transmit it}
+  if Result then Str := StrPas(PAnsiChar(@FResponseList[0].Data));                                           {If response received, copy data to Str}
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -253,10 +271,12 @@ var
   Idx : Cardinal;
 begin
 { TODO : Test GetXBee StrList }
+{ TODO : Check all comments }
   SetLength(StrList, 0);
-  Result := SetItem(Command, '', TargetIP, True);                                         {Send packet}
-  if Result then                                                                          {If response received}
-    begin                                                                                 {Copy data to StrList}
+  PrepareBuffer(Command);                                                                                    {Prepare command packet}
+  Result := TransmitUDP(TargetIP, True);                                                                     {and transmit it}
+  if Result then                                                                                             {If response received}
+    begin                                                                                                    {  Copy data to StrList}
     for Idx := 0 to High(FResponseList) do
       begin
       SetLength(StrList, Length(StrList)+1);
@@ -276,8 +296,9 @@ var
   Idx : Cardinal;
 begin
   Num := 0;
-  Result := SetItem(Command, '', TargetIP);
-  if Result then for Idx := 0 to FResponseList[0].Length-1 do Num := Num shl 8 + FResponseList[0].Data[Idx];
+  PrepareBuffer(Command);                                                                                    {Prepare command packet}
+  Result := TransmitUDP(TargetIP);                                                                           {and transmit it}
+  if Result then for Idx := 0 to FResponseList[0].Length-1 do Num := Num shl 8 + FResponseList[0].Data[Idx]; {If response received, convert from big-endian}
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -292,9 +313,10 @@ var
   NIdx : Cardinal;
 begin
   SetLength(NumList, 0);
-  Result := SetItem(Command, '', TargetIP, True);                                         {Send packet}
-  if Result then                                                                          {If response received}
-    begin                                                                                 {Copy data to NumList}
+  PrepareBuffer(Command);                                                                                    {Prepare command packet}
+  Result := TransmitUDP(TargetIP, True);                                                                     {and transmit it}
+  if Result then                                                                                             {If response received}
+    begin                                                                                                    {  Copy data to NumList}
     for RIdx := 0 to High(FResponseList) do
       begin
       SetLength(NumList, Length(NumList)+1);
@@ -307,17 +329,183 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.SetItem(Command: udpCommand; Str: String; TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
+function TXBeeWiFi.SetItem(Command: udpCommand; Str: String; TargetIP: String = ''): Boolean;
 {Set XBee attribute to string (Str) and return True if successful; False otherwise.
  Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
  when a broadcast packet is being transmitted.
  This method creates and sends a UDP packet, and checks and validates the response (if any).
  The full response packet can be seen in PRxBuf.}
+begin
+  PrepareBuffer(Command, Str);                                                                               {Prepare command packet}
+  Result := TransmitUDP(TargetIP);                                                                           {and transmit it}
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.SetItem(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean;
+{Set XBee attribute to value (Num) and return True if successful; False otherwise.
+ Set TargetIP if other than IPAddr should be used.
+ This method creates and sends a UDP packet, and checks and validates the response (if any).}
+begin
+{ TODO : Fix SetItem Num; it fails on 0 because that's a null string. }
+  PrepareBuffer(Command, '', Num);                                                                           {Prepare command packet}
+  Result := TransmitUDP(TargetIP);                                                                           {and transmit it}
+end;
+
+{----------------------------------------------------------------------------------------------------}
+function TXBeeWiFi.SendUDP(Data: TIDBytes): Boolean;
+{Send UDP data packet.  Data must be sized to exactly the number of bytes to transmit.
+ Returns True if successful, False if not.}
+begin
+
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;
+{Receive UDP data packet.  Data will be resized to exactly the number of bytes recieved.
+ Returns True if successful, False if not.}
+begin
+
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.ConnectTCP(TargetPort: Cardinal = 0; TargetIP: String = ''): Boolean;
+begin
+  Result := False;
+  try
+    try
+      if FTCPClient.Connected then raise Exception.Create('Already connected.');
+      FTCPClient.Host := ifthen(TargetIP <> '', TargetIP, FIPAddr);
+      FTCPClient.Port := ifthen(TargetPort > 0, TargetPort, FIPPort);
+      FTCPClient.Connect;
+    except
+      Result := False;
+    end;
+  finally
+    Result := True;
+  end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.DisconnectTCP: Boolean;
+begin
+  Result := False;
+  try
+    try
+      if FTCPClient.Connected then FTCPClient.Disconnect;
+    except
+      Result := False;
+    end;
+  finally
+    Result := True;
+  end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.SendTCP(Data: TIDBytes): Boolean;
+{Send data with TCP}
+begin
+  Result := False;
+  if FTCPClient.Connected then
+    begin
+    try
+      FTCPClient.IOHandler.WriteDirect(Data);
+    finally
+      Result := True;
+    end;
+    end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.ReceiveTCP(var Data: TIDBytes; Count: Integer): Boolean;
+{Receive data with TCP}
+begin
+  Result := False;
+  if FTCPClient.IOHandler.Connected then
+    begin
+    try
+      FTCPClient.IOHandler.ReadBytes(Data, Count);
+    finally
+      Result := True;
+    end;
+    end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+{----------------------------------------------------------------------------------------------------}
+{------------------------------------------ Private Methods -----------------------------------------}
+{----------------------------------------------------------------------------------------------------}
+{----------------------------------------------------------------------------------------------------}
+
+procedure TXBeeWiFi.PrepareBuffer(Command: udpCommand; ParamStr: String = ''; ParamNum: Integer = -1; ParamData: TIdBytes = nil;  RequestPacketAck: Boolean = True);
+{Resize and fill TxBuf (pointed to by PTxBuf) with Command, Parameter (Str, Num, or Data), and RequestPacketAck attributes.}
 var
-  RLIdx         : Integer;          // response list index
+  ParamLength : Cardinal;
+  ParamValue  : Cardinal;
+begin
+{ TODO : Make PrepareBuffer error out if Param data doesn't match command type }
+  if Command in udpStrCommands then                                                    {If command is a string-type command}
+    ParamLength := Length(ParamStr)                                                    {  note length in bytes/characters}
+  else                                                                                 {Else}
+    if Command = udpData then                                                          {  If command is a data command}
+      ParamLength := ifthen(assigned(ParamData), Length(ParamData), 0)                 {    note length of data buffer}
+    else                                                                               {  Else}
+      begin
+      ParamLength := 0;
+      if ParamNum > -1 then                                                            {    If number in range}
+        begin                                                                          {      note length in bytes of numeric value (1..4) and }
+        ParamValue := 0;                                                               {      rearrange for big-endian storage}
+        repeat
+          Inc(ParamLength);
+          ParamValue := (ParamValue shl 8) + (ParamNum and $FF);
+          ParamNum := ParamNum shr 8;
+        until ParamNum = 0;
+        end;
+      end;
+{ TODO : Protect against too big a data buffer (ParamData) }
+  SetLength(FTxBuf, 8 + ord(Command <> udpData)*(1+1+2) + ParamLength);                {Size TxBuf for Application Header (8 bytes) plus (if not Data command; FrameID (1) and ConfigOptions (1) and ATCommand (2)),  plus ParameterValue (0+)}
+  FPTxBuf := PxbTxPacket(@FTxBuf[0]);                                                  {Point PTxBuf at TxBuf}
+  FPTxBuf.Number1 := Random($FFFF);                                                    {Randomize Number1 ID}
+  FPTxBuf.Number2 := FPTxBuf.Number1 xor $4242;                                        {Prepare Number2 to match requirements}
+  FPTxBuf.PacketID := 0;                                                               {PacketID (always 0)}
+  FPTxBuf.EncryptionPad := 0;                                                          {EncryptionPad (always 0)}
+  FPTxBuf.CommandID := ifthen(Command <> udpData, RemoteCommand, DataCommand);         {Set to be remote command or data command}
+  FPTxBuf.CommandOptions := ord(RequestPacketAck)*$02;                                 {Set to request (or not request) acknowledgement}
+  if Command <> udpData then                                                           {If not a data stream}
+    begin
+    FPTxBuf.FrameID := FrameID;                                                        {  Set Frame ID}
+    FPTxBuf.ConfigOptions := ApplyCommand;                                             {  Set to apply the command}
+    FPTxBuf.ATCommand := ATCmd[Command];                                               {  Set AT Command}
+    end;
+  if ParamLength > 0 then                                                              {If Parameter not empty}
+    if Command in udpStrCommands then
+      Move(ParamStr, FPTxBuf.ParameterValue[0], ParamLength)                           {  append Parameter as a string}
+    else
+      if Command = udpData then
+        Move(ParamData, FPTxBuf.FrameID, ParamLength)                                  {  or as a data stream}
+      else
+        Move(ParamValue, FPTxBuf.ParameterValue[0], ParamLength);                      {  or as a numeric value}
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.TransmitUDP(TargetIP: String = ''; ExpectMultiple: Boolean = False): Boolean;
+{Transmit UDP packet already prepared by a call to PrepareBuffer.
+ Returns True if successful, False otherwise.
+ Set TargetIP if other than IPAddr.Text should be used.  Set ExpectMultiple true if multiple responses possible, such as
+ when a broadcast packet is being transmitted.
+ This method creates and sends a UDP packet, and checks and validates the response (if any).
+ The full response packet can be seen in PRxBuf.}
+var
+  RLIdx         : Integer;              // response list index
   IP            : String;
-  RequiredRx    : Cardinal;         // bit 0 = Packet ACK received, bit 1 = Command response received
-  Status        : Cardinal;         // $0-OK, $1-Error, $2=Invalid command, $3=Invalid parameter
+  RequiredRx    : Cardinal;             // bit 0 = Packet ACK received, bit 1 = Command response received
+  Status        : Cardinal;             // $0-OK, $1-Error, $2=Invalid command, $3=Invalid parameter
 const
   {Required Rx codes}
   PacketAck  = $01;                     {RequiredRx's code for packet ACK received}
@@ -338,13 +526,13 @@ const
 
 begin
 { TODO : Remove debugging Info }
+{ TODO : Enhance SetItem log errors }
 //  self.Caption := 'Transmitting...';
   Result := False;                                                                                           {Initialize result to false}
   RequiredRx := 0;                                                                                           {Initialize required reception to none}
   Status := 0;                                                                                               {Initialize status}
   RLIdx := -1;                                                                                               {Clear response list index}
   SetLength(FResponseList, 0);                                                                               {Clear the response list}
-  PrepareBuffer(Command, Str, True);                                                                         {Prepare command packet}
   try
     {Try to transmit; IP exceptions handled}
     FUDPClient.SendBuffer(ifthen(TargetIP <> '', TargetIP, FIPAddr), $BEE, FTxBuf);                          {Send to TargetIP or GUI-displayed IP}
@@ -391,133 +579,6 @@ begin
       end;
   end;
 end;
-
-{----------------------------------------------------------------------------------------------------}
-
-function TXBeeWiFi.SetItem(Command: udpCommand; Num: Cardinal; TargetIP: String = ''): Boolean;
-{Set XBee attribute to value (Num) and return True if successful; False otherwise.
- Set TargetIP if other than IPAddr should be used.
- This method creates and sends a UDP packet, and checks and validates the response (if any).
- The full response packet can be seen in PRxBuf.}
-begin
-  Result := SetItem(Command, inttostr(Num), TargetIP);
-end;
-
-{----------------------------------------------------------------------------------------------------}
-
-function TXBeeWiFi.ConnectStream(TargetPort: Cardinal = 0; TargetIP: String = ''): Boolean;
-begin
-  Result := False;
-  try
-    try
-      if FTCPClient.Connected then raise Exception.Create('Already connected.');
-      FTCPClient.Host := ifthen(TargetIP <> '', TargetIP, FIPAddr);
-      FTCPClient.Port := ifthen(TargetPort > 0, TargetPort, FIPPort);
-      FTCPClient.Connect;
-    except
-      Result := False;
-    end;
-  finally
-    Result := True;
-  end;
-end;
-
-{----------------------------------------------------------------------------------------------------}
-
-function TXBeeWiFi.DisconnectStream: Boolean;
-begin
-  Result := False;
-  try
-    try
-      if FTCPClient.Connected then FTCPClient.Disconnect;
-    except
-      Result := False;
-    end;
-  finally
-    Result := True;
-  end;
-end;
-
-{----------------------------------------------------------------------------------------------------}
-
-function TXBeeWiFi.Send(Data: TIDBytes): Boolean;
-{Send data with TCP}
-begin
-  Result := False;
-  if FTCPClient.Connected then
-    begin
-    try
-      FTCPClient.IOHandler.WriteDirect(Data);
-    finally
-      Result := True;
-    end;
-    end;
-end;
-
-{----------------------------------------------------------------------------------------------------}
-
-function TXBeeWiFi.Receive(var Data: TIDBytes; Count: Integer): Boolean;
-{Receive data with TCP}
-begin
-  Result := False;
-  if FTCPClient.IOHandler.Connected then
-    begin
-    try
-      FTCPClient.IOHandler.ReadBytes(Data, Count);
-    finally
-      Result := True;
-    end;
-    end;
-end;
-
-{----------------------------------------------------------------------------------------------------}
-{----------------------------------------------------------------------------------------------------}
-{------------------------------------------ Private Methods -----------------------------------------}
-{----------------------------------------------------------------------------------------------------}
-{----------------------------------------------------------------------------------------------------}
-
-procedure TXBeeWiFi.PrepareBuffer(Command: udpCommand; Parameter: String; RequestPacketAck: Boolean);
-{Resize and fill TxBuf (pointed to by PTxBuf) with Command, Parameter, and RequestPacketAck attributes.}
-var
-  ParamLength : Cardinal;
-  ParamValue  : Cardinal;
-  Temp        : Cardinal;
-begin
-  ParamLength := 0;
-  if Command in udpStrCommands then                                                    {If command is a string-type command}
-    ParamLength := Length(Parameter)                                                   {  note length in bytes/characters}
-  else
-    begin                                                                              {Else}
-    if Parameter <> '' then                                                            {  if parameter not empty}
-      begin
-      Temp := strtoint(Parameter);                                                     {    convert Parameter string to value, and...}
-      ParamValue := 0;
-      repeat
-        Inc(ParamLength);                                                              {    note length in bytes of numeric value (1..4) and }
-        ParamValue := (ParamValue shl 8) + (Temp and $FF);                             {    rearrange for big-endian storage}
-        Temp := Temp shr 8;
-      until Temp = 0;
-      end;
-    end;
-  SetLength(FTxBuf, 8+1+1+2+ParamLength);                                              {Size TxBuf for Application Header (8 bytes) plus FrameID (1) plus ConfigOptions (1) + ATCommand (2) + ParameterValue (0..19)}
-  FPTxBuf := PxbTxPacket(@FTxBuf[0]);                                                  {Point PTxBuf at TxBuf}
-  FPTxBuf.Number1 := Random($FFFF);                                                    {Randomize Number1 ID}
-  FPTxBuf.Number2 := FPTxBuf.Number1 xor $4242;                                        {Prepare Number2 to match requirements}
-  FPTxBuf.PacketID := 0;                                                               {PacketID (always 0)}
-  FPTxBuf.EncryptionPad := 0;                                                          {EncryptionPad (always 0)}
-  FPTxBuf.CommandID := RemoteCommand;                                                  {Set to be remote command}
-  FPTxBuf.CommandOptions := ord(RequestPacketAck)*$02;                                 {Set to request (or not request) acknowledgement}
-  FPTxBuf.FrameID := FrameID;                                                          {Set Frame ID}
-  FPTxBuf.ConfigOptions := ApplyCommand;                                               {Set to apply the command}
-  FPTxBuf.ATCommand := ATCmd[Command];                                                 {Set AT Command}
-  if True then
-  if Parameter <> '' then                                                              {If Parameter not empty}
-    if Command in udpStrCommands then
-      Move(Parameter, FPTxBuf.ParameterValue[0], ParamLength)                          {  append Parameter as a string}
-    else
-      Move(ParamValue, FPTxBuf.ParameterValue[0], ParamLength);                        {  or as a numeric value}
-end;
-
 
 {----------------------------------------------------------------------------------------------------}
 {----------------------------------------------------------------------------------------------------}
