@@ -73,10 +73,7 @@ implementation
 
 procedure TForm1.FormCreate(Sender: TObject);
 begin
-  {Upon start up, bind UDP to 0xBEE port ($BEE) to receive all responses from XBee Wi-Fi modules
-   because some features have been seen to respond only to a source port of $BEE.}
   XBee := TXBeeWiFi.Create;
-  XBee.LocalUDPPort := $BEE;
   XBee.Timeout := Timeout;
 end;
 
@@ -122,7 +119,7 @@ begin
   IPPort.Text := '';
   NodeID.Text := '';
 { TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
-  XBee.TargetIPAddr := '192.168.1.255';
+  XBee.RemoteIPAddr := '192.168.1.255';
   if XBee.GetItem(xbIPAddr, Nums) then
     begin
     for Idx := 0 to High(Nums) do
@@ -131,7 +128,7 @@ begin
       PXB := @XBeeList[High(XBeeList)];
       PXB.CfgChecksum := CSumUnknown;
       PXB.IPAddr := FormatIPAddr(Nums[Idx]);
-      XBee.TargetIPAddr := PXB.IPAddr;
+      XBee.RemoteIPAddr := PXB.IPAddr;
       if XBee.GetItem(xbIPPort, PXB.IPPort) then
         if XBee.GetItem(xbMacHigh, PXB.MacAddrHigh) then
           if XBee.GetItem(xbMacLow, PXB.MacAddrLow) then
@@ -157,9 +154,9 @@ end;
 procedure TForm1.PCPortComboChange(Sender: TObject);
 begin
   IPAddr.Text := XBeeList[PCPortCombo.Selected.Index].IPAddr;
-  XBee.TargetIPAddr := IPAddr.Text;
+  XBee.RemoteIPAddr := IPAddr.Text;
   IPPort.Text := inttostr(XBeeList[PCPortCombo.Selected.Index].IPPort);
-  XBee.TargetIPPort := strtoint(IPPort.Text);
+  XBee.RemoteSerialIPPort := XBeeList[PCPortCombo.Selected.Index].IPPort;
   NodeID.Text := XBeeList[PCPortCombo.Selected.Index].NodeID;
   MacAddr.Text := FormatMACAddr(XBeeList[PCPortCombo.Selected.Index].MacAddrHigh, XBeeList[PCPortCombo.Selected.Index].MacAddrLow);
 end;
@@ -210,14 +207,15 @@ begin
             (Validate(xbChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum, True));
   if not Result then                                                                         {  If not...}
     begin
-    Validate(xbIO2State, pinOutHigh);                                                       {    Ensure I/O is set to output high}
-    Validate(xbOutputMask, $7FFF);                                                          {    Ensure output mask is proper (default, in this case)}
-    Validate(xbIO2Timer, 1);                                                                {    Ensure DIO2's timer is set to 100 ms}
-    Validate(xbSerialMode, TransparentMode);                                                {    Ensure Serial Mode is transparent}
-    Validate(xbSerialBaud, Baud115200);                                                     {    Ensure baud rate is 115,200 bps}
-    Validate(xbSerialParity, ParityNone);                                                   {    Ensure parity is none}
-    Validate(xbSerialStopBits, StopBits1);                                                  {    Ensure stop bits is 1}
-    XBee.GetItem(xbChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum);             {    Record new configuration checksum}
+    Validate(xbListenIP, TCPListen);                                                         {    Ensure XBee's Serial Service listens to TCP packets}
+    Validate(xbIO2State, pinOutHigh);                                                        {    Ensure I/O is set to output high}
+    Validate(xbOutputMask, $7FFF);                                                           {    Ensure output mask is proper (default, in this case)}
+    Validate(xbIO2Timer, 1);                                                                 {    Ensure DIO2's timer is set to 100 ms}
+    Validate(xbSerialMode, TransparentMode);                                                 {    Ensure Serial Mode is transparent}
+    Validate(xbSerialBaud, Baud115200);                                                      {    Ensure baud rate is 115,200 bps}
+    Validate(xbSerialParity, ParityNone);                                                    {    Ensure parity is none}
+    Validate(xbSerialStopBits, StopBits1);                                                   {    Ensure stop bits is 1}
+    XBee.GetItem(xbChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum);              {    Record new configuration checksum}
     Result := True;
     end;
 end;
@@ -265,6 +263,7 @@ begin
       for i := 1 to 250 + 8 do AppendByte($F9);
 
       XBee.SendUDP(TxBuf);
+
 //      GenerateResetSignal;
 //      XBee.SetItem(xbData, $0000);
 //      XBee.Send(TxBuf);

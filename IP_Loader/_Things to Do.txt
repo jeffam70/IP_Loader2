@@ -42,6 +42,11 @@ THINGS DONE
   * Accept multiple responses
 * Support Configuration Checksum
 
+* Changed TargetIPx to RemoteIPx
+* Heavily revised to include a Serial TCP, Serial UDP, and Application UDP client and methods for that purpose.
+* All UDP methods use the Application UDP Client except the SendUDP (when told not to) and the ReceiveUDP methods.
+* Appliation UDP Client is bound to $BEE.
+
 
 * Add TCP
   * To connect
