@@ -58,7 +58,8 @@ var
   RxBuf    : TIdBytes;                 {Receive packet (resized on receive)}
 
 const
-  Timeout        = 1000;
+  SerTimeout     = 1000;
+  AppTimeout     = 200;
   CSumUnknown    = $FFFFFFFF;          {Unknown checksum value}
 
 implementation
@@ -74,7 +75,8 @@ implementation
 procedure TForm1.FormCreate(Sender: TObject);
 begin
   XBee := TXBeeWiFi.Create;
-  XBee.Timeout := Timeout;
+  XBee.SerialTimeout := SerTimeout;
+  XBee.ApplicationTimeout := AppTimeout;
 end;
 
 {----------------------------------------------------------------------------------------------------}

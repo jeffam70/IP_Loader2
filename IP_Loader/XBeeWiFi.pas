@@ -112,13 +112,13 @@ type
     FPTxBuf       : PxbTxPacket;              {Pointer to structured transmit packet (shares memory space with TxBuf)}
     FPRxBuf       : PxbRxPacket;              {Pointer to structured receive packet (shares memory space with RxBuf)}
     FResponseList : array of TResponse;       {Dynamic array of received responses (from packet's parameter field); multiple XBee may respond to broadcast message}
-    {XBeeWiFi Metrics}
-    FTimeout      : Cardinal;                 {Timeout for UDP responses}
     {Getters and Setters}
     function  GetRemoteIPAddr: String;
     procedure SetRemoteIPAddr(Value: String);
     function  GetRemoteSerIPPort: Cardinal;
     procedure SetRemoteSerIPPort(Value: Cardinal);
+    function  GetTimeout(Index: Integer): Integer;
+    procedure SetTimeout(Index, Value: Integer);
   public
     { Public declarations }
     constructor Create;
@@ -143,7 +143,8 @@ type
     property RemoteSerialIPPort : Cardinal read GetRemoteSerIPPort write SetRemoteSerIPPort;         {IP port of XBee to contact (for Serial service only; Application service's port is fixed)}
 //    property LocalUDPPort : Cardinal read GetLocalUDPPort write SetLocalUDPPort;
 //    property LocalTCPPort : Cardinal read GetLocalTCPPort write SetLocalTCPPort;
-    property Timeout : Cardinal read FTimeout write FTimeout;
+    property SerialTimeout : Integer index 0 read GetTimeout write SetTimeout;                       {Read-timeout for serial service}
+    property ApplicationTimeout : Integer index 1 read GetTimeout write SetTimeout;                  {Read-timeout for application service}
   private
     { Private declarations }
     {XBee Application Service buffer transmit methods}
@@ -190,7 +191,8 @@ const
   StopBits1       = $00;
   StopBits2       = $01;
   {Misc}
-  DefaultTimeout  = 1000;
+  DefaultSerialTimeout      = 2000;
+  DefaultApplicationTimeout = 1000;
 
 implementation
 
@@ -241,6 +243,32 @@ begin
 end;
 
 {----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.GetTimeout(Index: Integer): Integer;
+{Get read-timeout of Serial or Application service}
+begin
+  case Index of
+    0: Result := FSerTCPClient.ReadTimeout;          {Get Serial Services' read timeout}
+    1: Result := FAppUDPClient.ReceiveTimeout;       {Get Serial Service's read timeout}
+  end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+procedure TXBeeWiFi.SetTimeout(Index, Value: Integer);
+{Set read-timeout for Serial or Application service}
+begin
+  case Index of
+    0: if (Value <> FSerTCPClient.ReadTimeout) then
+         begin
+         FSerTCPClient.ReadTimeout := Value;                                                     {Set Serial Services' read timeout}
+         FSerUDPClient.ReceiveTimeout := Value;
+         end;
+    1: if (Value <> FAppUDPClient.ReceiveTimeout) then FAppUDPClient.ReceiveTimeout := Value;    {Set Application Service's read timeout}
+  end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
 {----------------------------------------------------------------------------------------------------}
 {------------------------------------------- Public Methods -----------------------------------------}
 {----------------------------------------------------------------------------------------------------}
@@ -248,15 +276,17 @@ end;
 
 constructor TXBeeWiFi.Create;
 begin
-  FSerTCPClient := TIdTCPClient.Create;          {Create Serial TCP Client}
-  FSerTCPClient.UseNagle := False;               {Disable its Nagel Timer}
-  FSerUDPClient := TIdUDPClient.Create;          {Create Serial UDP Client}
-  FAppUDPClient := TIdUDPClient.Create;          {Create Application UDP Client}
-  FAppUDPClient.BoundPort := $BEE;               {Bind Application UDP Client to port $BEE (local and remote side)}
+  FSerTCPClient := TIdTCPClient.Create;                      {Create Serial TCP Client}
+  FSerTCPClient.UseNagle := False;                           {Disable its Nagel Timer}
+  FSerTCPClient.ReadTimeout := DefaultSerialTimeout;         {Set its read-timeout}
+  FSerUDPClient := TIdUDPClient.Create;                      {Create Serial UDP Client}
+  FSerUDPClient.ReceiveTimeout := DefaultSerialTimeout;      {Set its read-timeout}
+  FAppUDPClient := TIdUDPClient.Create;                      {Create Application UDP Client}
+  FAppUDPClient.BoundPort := $BEE;                           {Bind Application UDP Client to port $BEE (local and remote side)}
   FAppUDPClient.Port := $BEE;
-  SetLength(FRxBuf, 1500);                       {Set receive buffer length}
-  FPRxBuf := PxbRxPacket(@FRxBuf[0]);            {Point PRxBuf at RxBuf}
-  FTimeout := DefaultTimeout;                    {Set default timeout}
+  FAppUDPClient.ReceiveTimeout := DefaultApplicationTimeout; {Set it's read-timeout}
+  SetLength(FRxBuf, 1500);                                   {Set receive buffer length}
+  FPRxBuf := PxbRxPacket(@FRxBuf[0]);                        {Point PRxBuf at RxBuf}
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -436,7 +466,7 @@ begin
 end;
 
 {----------------------------------------------------------------------------------------------------}
-{ TODO : Make TCP methods consistent }
+
 function TXBeeWiFi.SendTCP(Data: TIDBytes): Boolean;
 {Send data with TCP}
 begin
@@ -553,7 +583,7 @@ const
       Result := (RequiredRx < PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp + ord(ExpectMultiple)*MuliRsp);
       if Result then
         begin
-        Count := FAppUDPClient.ReceiveBuffer(FRxBuf, FTimeout);
+        Count := FAppUDPClient.ReceiveBuffer(FRxBuf{, FTimeout});
         Result := Count > 0;
         end;
     end;
