@@ -18,8 +18,8 @@ uses
 type
   {Define XBee WiFi's udp commands}
   {IMPORTANT: Do not rearrange, append, or delete from this list without similarly modifying the ATCmd constant array}
-  xbCommand = (xbData, xbMacHigh, xbMacLow, xbSSID, xbIPAddr, xbIPMask, xbIPGateway, xbIPPort, xbNodeID, xbMaxRFPayload, xbListenIP,
-               xbIO2State, xbOutputMask, xbOutputState, xbIO2Timer, xbSerialMode, xbSerialBaud, xbSerialParity, xbSerialStopBits, xbChecksum);
+  xbCommand = (xbData, xbMacHigh, xbMacLow, xbSSID, xbIPAddr, xbIPMask, xbIPGateway, xbIPPort, xbNodeID, xbMaxRFPayload, xbIO2State,
+               xbOutputMask, xbOutputState, xbIO2Timer, xbSerialMode, xbSerialBaud, xbSerialParity, xbSerialStopBits, xbSerialIP, xbChecksum);
 
 const
   {Define XBee WiFi's AT commands}
@@ -35,7 +35,6 @@ const
     {xbIPPort}          Byte('C') + Byte('0') shl 8,  {[Rb/Wb] Xbee's UDP/IP Port (16-bits)}
     {xbNodeID}          Byte('N') + Byte('I') shl 8,  {[Rs/Ws] Friendly node identifier string (20 printable ASCII characters)}
     {xbMaxRFPayload}    Byte('N') + Byte('P') shl 8,  {[Rb] Maximum RF Payload (16-bits; in bytes)}
-    {xbListenIP}        Byte('I') + Byte('P') shl 8,  {[Rb/Wb] Protocol for listening on source port (0=UDP, 1=TCP)}
     {xbIO2State}        Byte('D') + Byte('2') shl 8,  {[Rb/Wb] Designated reset pin (3-bits; 0=Disabled, 1=SPI_CLK, 2=Analog input, 3=Digital input, 4=Digital output, 5=Digital output)}
     {xbOutputMask}      Byte('O') + Byte('M') shl 8,  {[Rb/Wb] Output mask for all I/O pins (each 1=output pin, each 0=input pin) (15-bits on TH, 20-bits on SMT)}
     {xbOutputState}     Byte('I') + Byte('O') shl 8,  {[Rb/Wb] Output state for all I/O pins (each 1=high, each 0=low) (15-bits on TH, 20-bits on SMT).  Period affected by updIO2Timer}
@@ -44,6 +43,7 @@ const
     {xbSerialBaud}      Byte('B') + Byte('D') shl 8,  {[Rb/Wb] serial baud rate ($1=2400, $2=4800, $3=9600, $4=19200, $5=38400, $6=57600, $7=115200, $8=230400, $9=460800, $A=921600)}
     {xbSerialParity}    Byte('N') + Byte('B') shl 8,  {[Rb/Wb] serial parity ($0=none, $1=even, $2=odd)}
     {xbSerialStopBits}  Byte('S') + Byte('B') shl 8,  {[Rb/Wb] serial stop bits ($0=one stop bit, $1=two stop bits)}
+    {xbSerialIP}        Byte('I') + Byte('P') shl 8,  {[Rb/Wb] Protocol for serial service (0=UDP, 1=TCP)}
     {xbChecksum}        Byte('C') + Byte('K') shl 8   {[Rb] current configuration checksum (16-bits)}
     );
 
@@ -132,12 +132,12 @@ type
     function  SetItem(Command: xbCommand; Num: Cardinal): Boolean; overload;                         {Set numeric value}
     {XBee UDP data methods}
     function  SendUDP(Data: TIDBytes; UseAppService: Boolean = True): Boolean;                       {Send data with UDP; over Application Service (normally) or Serial Serivce}
-    function  ReceiveUDP(var Data: TIDBytes; Count: Integer; Timeout: Cardinal): Boolean;            {Receive data with UDP; over Serial Service only}
+    function  ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;                            {Receive data with UDP; over Serial Service only}
     {XBee TCP data methods}
     function  ConnectTCP: Boolean;                                                                   {Connect TCP channel to Serial Service}
     function  DisconnectTCP: Boolean;                                                                {Disconnect TCP channel from Serial Service}
     function  SendTCP(Data: TIDBytes): Boolean;                                                      {Send data with TCP; over Serial Service}
-    function  ReceiveTCP(var Data: TIDBytes; Count: Integer; Timeout: Cardinal): Boolean;            {Receive data with TCP; over Serial Service}
+    function  ReceiveTCP(var Data: TIDBytes; Timeout: Cardinal): Boolean;                            {Receive data with TCP; over Serial Service}
     {Class properties}
     property RemoteIPAddr : String read GetRemoteIPAddr write SetRemoteIPAddr;                       {IP address of XBee to contact (for both Serial and Application services)}
     property RemoteSerialIPPort : Cardinal read GetRemoteSerIPPort write SetRemoteSerIPPort;         {IP port of XBee to contact (for Serial service only; Application service's port is fixed)}
@@ -164,8 +164,8 @@ const
   QueueCommand    = $00;
   ApplyCommand    = $02;
   {IP Modes}
-  UDPListen       = $00;
-  TCPListen       = $01;
+  SerialUDP       = $00;
+  SerialTCP       = $01;
   {Serial Modes}
   TransparentMode = $00;
   APIwoEscapeMode = $01;
@@ -236,6 +236,7 @@ begin
     begin
     FSerTCPClient.Port := Value;                     {Set Serial Services' IP address}
     FSerUDPClient.Port := Value;
+    FSerUDPClient.BoundPort := Value;
     end;
 end;
 
@@ -385,11 +386,20 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.ReceiveUDP(var Data: TIDBytes; Count: Integer; Timeout: Cardinal): Boolean;
-{Receive UDP data packet.  Data will be resized to exactly the number of bytes recieved.
+function TXBeeWiFi.ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;
+{Receive UDP data packet.  Data will be resized to exactly fit the received byte stream.
+ This always uses the Serial Service.
  Returns True if successful, False if not.}
+var
+  Count : Integer;
 begin
-{ TODO : Make ReceivedUDP }
+//  FSerUDPClient.BoundIP := '192.168.1.136';
+//  FSerUDPClient.Connect;
+//  if FSerUDPClient.Connected then showmessage('Connected') else showmessage('Not Connected');
+  SetLength(Data, 1500);                                                                                     {Resize buffer to standard max packet size}
+  Count := FSerUDPClient.ReceiveBuffer(Data, Timeout);
+  SetLength(Data, Count);                                               {Receive data and resize buffer to exactly fit it}
+  Result := Length(Data) > 0;
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -443,14 +453,14 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.ReceiveTCP(var Data: TIDBytes; Count: Integer; Timeout: Cardinal): Boolean;
+function TXBeeWiFi.ReceiveTCP(var Data: TIDBytes; Timeout: Cardinal): Boolean;
 {Receive data with TCP}
 begin
   Result := False;
   if FSerTCPClient.IOHandler.Connected then
     begin
     try
-      FSerTCPClient.IOHandler.ReadBytes(Data, Count);
+      FSerTCPClient.IOHandler.ReadBytes(Data, -1);
     finally
       Result := True;
     end;
