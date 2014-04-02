@@ -131,6 +131,9 @@ type
     function  SetItem(Command: xbCommand; Str: String): Boolean; overload;                           {Set string value}
     function  SetItem(Command: xbCommand; Num: Cardinal): Boolean; overload;                         {Set numeric value}
     {XBee UDP data methods}
+    { TODO : Resolve TCP and UDP serial vs application names from interface perspective. }
+    function  ConnectSerialUDP: Boolean;                                                             {Connect UDP channel to Serial Service}
+    function  DisconnectSerialUDP: Boolean;                                                          {Disconnect UDP channel from Serial Service}
     function  SendUDP(Data: TIDBytes; UseAppService: Boolean = True): Boolean;                       {Send data with UDP; over Application Service (normally) or Serial Serivce}
     function  ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;                            {Receive data with UDP; over Serial Service only}
     {XBee TCP data methods}
@@ -393,6 +396,40 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
+function TXBeeWiFi.ConnectSerialUDP: Boolean;
+{Connect serial service UDP channel to already-set RemoteIP/RemoteIPPort metrics}
+begin
+  Result := False;
+  try
+    try
+      if not FSerUDPClient.Connected then FSerUDPClient.Connect;
+    except
+      Result := False;
+    end;
+  finally
+    Result := True;
+  end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function TXBeeWiFi.DisconnectSerialUDP: Boolean;
+{Disconnect serial service UDP channel}
+begin
+  Result := False;
+  try
+    try
+      if FSerUDPClient.Connected then FSerUDPClient.Disconnect;
+    except
+      Result := False;
+    end;
+  finally
+    Result := True;
+  end;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
 function TXBeeWiFi.SendUDP(Data: TIDBytes; UseAppService: Boolean = True): Boolean;
 {Send UDP data packet to XBee's UART.  Data must be sized to exactly the number of bytes to transmit.
  This normally uses the Application Service to verify the data packet was received (packet acknowlegement).
@@ -435,12 +472,12 @@ end;
 {----------------------------------------------------------------------------------------------------}
 
 function TXBeeWiFi.ConnectTCP: Boolean;
+{Connect serial service TCP channel to already-set RemoteIP/RemoteIPPort metrics}
 begin
   Result := False;
   try
     try
-      if FSerTCPClient.Connected then raise Exception.Create('Already connected.');
-      FSerTCPClient.Connect;
+      if not FSerTCPClient.Connected then FSerTCPClient.Connect;
     except
       Result := False;
     end;
@@ -452,6 +489,7 @@ end;
 {----------------------------------------------------------------------------------------------------}
 
 function TXBeeWiFi.DisconnectTCP: Boolean;
+{Disconnect serial service TCP channel}
 begin
   Result := False;
   try
@@ -524,6 +562,7 @@ begin
         ParamValue := 0;                                                              {      rearrange for big-endian storage}
         repeat
           Inc(ParamLength);
+//          ParamLength := 2;
           ParamValue := (ParamValue shl 8) + (ParamNum and $FF);
           ParamNum := ParamNum shr 8;
         until ParamNum = 0;

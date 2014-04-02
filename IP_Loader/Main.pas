@@ -209,7 +209,7 @@ begin
             (Validate(xbChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum, True));
   if not Result then                                                                         {  If not...}
     begin
-//    Validate(xbSerialIP, SerialUDP);                                                       {    Ensure XBee's Serial Service uses UDP packets}
+    Validate(xbSerialIP, SerialUDP, False);                                                  {    Ensure XBee's Serial Service uses UDP packets}
     Validate(xbIO2State, pinOutHigh);                                                        {    Ensure I/O is set to output high}
     Validate(xbOutputMask, $7FFF);                                                           {    Ensure output mask is proper (default, in this case)}
     Validate(xbIO2Timer, 1);                                                                 {    Ensure DIO2's timer is set to 100 ms}
@@ -328,11 +328,8 @@ const
             XBee.SendUDP(TxBuf);                                                                                     {Transmit template byte}
             sleep(100);                                                                                   {Delay to give plenty of round-trip time}
             end;
-//   SetLength(TxBuf, 1);
-//   TxBuf[0] := 0;
-//   XBee.SendUDP(TxBuf, False);
-//          Read := XBee.ReceiveUDP(RxBuf, 2000);
-          Read := XBee.ReceiveTCP(RxBuf, 2000);
+          Read := XBee.ReceiveUDP(RxBuf, 2000);
+//          Read := XBee.ReceiveTCP(RxBuf, 2000);
           RxBuffSize := length(RxBuf);
           FRxBuffEnd := RxBuffSize;
           if not Read then                                                                              {Data not entirely read yet?}
@@ -365,63 +362,64 @@ begin
   FRxBuffStart := 0;
   FRxBuffEnd := 0;
 
-  if not XBee.ConnectTCP then
+//  if not XBee.ConnectTCP then
+  if not XBee.ConnectSerialUDP then
     begin
     showmessage('Cannot connect');
     exit;
     end;
 
   try
-  GenerateResetSignal;         {(Enforce XBee Configuration and...) Generate reset signal}
-  IndySleep(190);
-//  if XBee.ConnectTCP then
-//    begin
-//    try
-      SetLength(TxBuf, 1+250+250+8);
-      TxBuffLength := 0;
-      AppendByte($F9);
-      for i := 1 to 250 do AppendByte(TxHandshake[i] or $FE);                     {Note "or $FE" encodes 1 handshake bit per transmitted byte}
-      for i := 1 to 250 + 8 do AppendByte($F9);
+    GenerateResetSignal;         {(Enforce XBee Configuration and...) Generate reset signal}
+    IndySleep(190);
+//    if XBee.ConnectTCP then
+//      begin
+//      try
+        SetLength(TxBuf, 1+250+250+8);
+        TxBuffLength := 0;
+        AppendByte($F9);
+        for i := 1 to 250 do AppendByte(TxHandshake[i] or $FE);                     {Note "or $FE" encodes 1 handshake bit per transmitted byte}
+        for i := 1 to 250 + 8 do AppendByte($F9);
 
-      XBee.SendUDP(TxBuf);
-//      XBee.ReceiveUDP(RxBuf, 0, 1000);
+        XBee.SendUDP(TxBuf);
+//        XBee.ReceiveUDP(RxBuf, 0, 1000);
 
-//      GenerateResetSignal;
-//      XBee.SetItem(xbData, $0000);
-//      XBee.Send(TxBuf);
-//    finally
-//      XBee.DisconnectTCP;
-//    end;
-//    end;
+//        GenerateResetSignal;
+//        XBee.SetItem(xbData, $0000);
+//        XBee.Send(TxBuf);
+//      finally
+//        XBee.DisconnectTCP;
+//      end;
+//      end;
 
-    {Receive connect string}
-    RxCount := 0;
-    i := 1;
-    repeat                                                                      {Loop}
-      r := ReceiveBit(False, 100, False);                                       {  Receive encoded bit}
-      inc(RxCount);
-      if r = RxHandshake[i] then                                                {  Bits match?}
-        inc(i)                                                                  {    Ready to match next RxHandshake bit}
-      else
-        begin                                                                   {  Else (bits don't match)}
-        dec(FRxBuffStart, (i-1)*ord(r < 2));                                    {    Proper encoding (r < 2)?; start with 2nd bit checked and try again. Improper encoding (r > 1)?; may be junk prior to RxHandshake stream, ignore junk}
-        i := 1;                                                                 {    Prep to match first RxHandshake bit}
-        if RxCount > RxBuffSize then showmessage('Hardware Lost');              {    No RxHandshake in stream?  Time out; error}
+      {Receive connect string}
+      RxCount := 0;
+      i := 1;
+      repeat                                                                      {Loop}
+        r := ReceiveBit(False, 100, False);                                       {  Receive encoded bit}
+        inc(RxCount);
+        if r = RxHandshake[i] then                                                {  Bits match?}
+          inc(i)                                                                  {    Ready to match next RxHandshake bit}
+        else
+          begin                                                                   {  Else (bits don't match)}
+          dec(FRxBuffStart, (i-1)*ord(r < 2));                                    {    Proper encoding (r < 2)?; start with 2nd bit checked and try again. Improper encoding (r > 1)?; may be junk prior to RxHandshake stream, ignore junk}
+          i := 1;                                                                 {    Prep to match first RxHandshake bit}
+          if RxCount > RxBuffSize then showmessage('Hardware Lost');              {    No RxHandshake in stream?  Time out; error}
+          end;
+      until (i > 250);                                                            {Loop until all RxHandshake bits received}
+      {Receive version}
+      for i := 1 to 8 do FVersion := FVersion shr 1 and $7F or ReceiveBit(False, 50) shl 7;
+      if FVersionMode then
+        begin {If version mode, send shutdown command and reset hardware to reboot}
+        AppendLong(0);
+        XBee.SendUDP(TxBuf);
+        GenerateResetSignal;
+//        CloseComm;
         end;
-    until (i > 250);                                                            {Loop until all RxHandshake bits received}
-    {Receive version}
-    for i := 1 to 8 do FVersion := FVersion shr 1 and $7F or ReceiveBit(False, 50) shl 7;
-    if FVersionMode then
-      begin {If version mode, send shutdown command and reset hardware to reboot}
-      AppendLong(0);
-      XBee.SendUDP(TxBuf);
-      GenerateResetSignal;
-//      CloseComm;
-      end;
-    finally
-      XBee.DisconnectTCP;
-    end;
-
+  finally
+    XBee.DisconnectSerialUDP;
+//    XBee.DisconnectTCP;
+  end;
 end;
 
 end.
