@@ -113,16 +113,22 @@ object Form1: TForm1
   object TransmitButton: TButton
     Height = 22.000000000000000000
     Position.X = 240.000000000000000000
-    Position.Y = 256.000000000000000000
+    Position.Y = 296.000000000000000000
     TabOrder = 6
     Text = 'Transmit'
     Width = 129.000000000000000000
     OnClick = TransmitButtonClick
   end
-  object PingClient: TIdIcmpClient
-    Protocol = 1
-    ProtocolIPv6 = 58
-    IPVersion = Id_IPv4
+  object LoadButton: TButton
+    Height = 22.000000000000000000
+    Position.X = 240.000000000000000000
+    Position.Y = 256.000000000000000000
+    TabOrder = 7
+    Text = 'Load'
+    Width = 129.000000000000000000
+    OnClick = LoadButtonClick
+  end
+  object OpenDialog: TOpenDialog
     Left = 16
     Top = 8
   end
