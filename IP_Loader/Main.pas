@@ -61,7 +61,6 @@ var
   XBeeList  : array of TXBee;           {Dynamic array of XBee Info records}
   TxBuf     : TIdBytes;                 {Transmit packet (resized per packet)}
   RxBuf     : TIdBytes;                 {Receive packet (resized on receive)}
-  Buffer    : PByteArray;               {Holds Propeller Application image loaded from disk or copied from BinImage}
   FBinImage : PByteArray;               {A copy of the Propeller Application's binary image (used to generate the download stream)}
   FBinSize  : Integer;                  {The size of FBinImage (in longs)}
 
@@ -255,11 +254,11 @@ var
     {----------------}
 
 begin
-  if not OpenDialog.Execute then exit;
+//  if not OpenDialog.Execute then exit;
   {Initialize}
   ImageSize := 0;
 //  fillmemory(Buffer, ImageLimit, 0);
-  fillchar(Buffer, ImageLimit, 0);
+  fillchar(FBinImage[0], ImageLimit, 0);
 //  FName := ifthen(Filename <> nil, strpas(Filename), '');
   {Process file/image}
 //  if FName <> '' then
@@ -271,7 +270,7 @@ begin
       OpenDialog.Filter := 'Propeller Applications (*.binary, *.eeprom)|*.binary;*.eeprom|All Files (*.*)|*.*';
       OpenDialog.FilterIndex := 0;
       OpenDialog.FileName := '';
-      OpenDialog.InitialDir := extractfiledir(FName);
+//      OpenDialog.InitialDir := extractfiledir(FName);
       {Show Open Dialog}
       if not OpenDialog.Execute then exit;
       FName := OpenDialog.Filename;
@@ -280,7 +279,7 @@ begin
       begin {File found, load it up}
       FStream := TFileStream.Create(FName, fmOpenRead+fmShareDenyWrite);
       try
-        ImageSize := FStream.Read(Buffer^, ImageLimit);
+        ImageSize := FStream.Read(FBinImage^, ImageLimit);
       finally
         FStream.Free;
       end; {finally}
@@ -294,7 +293,8 @@ begin
 //    end;
   try
     {Validate application image (and install initial call frame)}
-    ValidateImageDataIntegrity(Buffer, min(ImageLimit, ImageSize), FName);
+    ValidateImageDataIntegrity(FBinImage, min(ImageLimit, ImageSize), FName);
+    FBinSize := ImageSize div 4;
     {Download image to Propeller chip (use VBase (word 4) value as the 'image long-count size')}
 //    Propeller.Download(Buffer, PWordArray(Buffer)[4] div 4, DownloadCmd);
   except
@@ -497,11 +497,13 @@ const
 //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgress));                            {Update GUI - Progressing (receiving bit)}
           if Template then                                                                              {Need echo byte?}
             begin
+            SetLength(TxBuf, 1);
+            TxBuffLength := 0;
             AppendByte($F9);
             XBee.SendUDP(TxBuf);                                                                                     {Transmit template byte}
             sleep(100);                                                                                   {Delay to give plenty of round-trip time}
             end;
-          Read := XBee.ReceiveUDP(RxBuf, 2000);
+          Read := XBee.ReceiveUDP(RxBuf, 1);
 //          Read := XBee.ReceiveTCP(RxBuf, 2000);
           RxBuffSize := length(RxBuf);
           FRxBuffEnd := RxBuffSize;
@@ -511,7 +513,7 @@ const
 //            WaitResult := waitforsingleobject(FCommIOEvent, 1000);                                        {Wait for completion, or 1 second, whichever comes first}
 //            if WaitResult = WAIT_FAILED then Error(ord(mtWaitFailed));
 //            if WaitResult = WAIT_TIMEOUT then ReadError;                                                  {Error, timed-out on read of PC hardware}
-              raise Exception.Create('Error: Timed-out on read.');
+//              raise Exception.Create('Error: Timed-out on read.');
             end;
 //          if not GetOverlappedResult(FCommHandle, FCommOverlap, FRxBuffEnd, True) then ReadError;       {Get count of received bytes; error if necessary}
           end;
@@ -529,8 +531,9 @@ const
    {----------------}
 
 begin
+  if FBinSize = 0 then exit;
 
-  FVersionMode := True;
+  FVersionMode := False;
   FDownloadMode := 1; {The download command; 1 = write to RAM and run, 2 = write to EEPROM and stop, 3 = write to EEPROM and run}
 
   FRxBuffStart := 0;
@@ -591,46 +594,48 @@ begin
         XBee.SendUDP(TxBuf);
         GenerateResetSignal;
 //        CloseComm;
-        end;
-        {Send download command immediately}
-      SetLength(TxBuf, 11);
-      TxBuffLength := 0;
-      AppendLong(FDownloadMode);
-      XBee.SendUDP(TxBuf);
-      {If download command 1-3, do the following}
-      if FDownloadMode > 0 then
-      begin
-//        {Update GUI - Loading RAM}
-///        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtLoadingRAM));
-        {Send count and longs}
-        SetLength(TxBuf, (1+FBinSize)*11);
-        TxBuffLength := 0;
-        AppendLong(FBinSize);
-        for i := 0 to FBinSize-1 do
-          begin
-//          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgress));
-          AppendLong(PIntegerArray(FBinImage)[i]);
-          end;
-        XBee.SendUDP(TxBuf);
-//        {Update GUI - Verifying RAM}
-//        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingRAM));
-        {Receive ram checksum pass/fail}
-        if ReceiveBit(True, 2500) = 1 then raise Exception.Create('RAM Checksum Error');//Error(ord(mtRAMChecksumError) + (strtoint(FComPort) shl 16));
-        {If download command 2-3, do the following}
-        if FDownloadMode > 1 then
+        end
+      else
         begin
-//          {Update GUI - Programming EEPROM}
-//          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgrammingEEPROM));
-          {Receive eeprom program pass/fail}
-          if ReceiveBit(True, 5000) = 1 then raise Exception.Create('EEPROM Programming Error');//Error(ord(mtEEPROMProgrammingError) + (strtoint(FComPort) shl 16));
-//          {Update GUI - Verifying EEPROM}
-//          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingEEPROM));
-          {Receive eeprom verify pass/fail}
-          if ReceiveBit(True, 2500) = 1 then raise Exception.Create('EEPROM Verify Error');//Error(ord(mtEEPROMVerifyError) + (strtoint(FComPort) shl 16));
+        {Send download command immediately}
+        SetLength(TxBuf, 11);
+        TxBuffLength := 0;
+        AppendLong(FDownloadMode);
+        XBee.SendUDP(TxBuf);
+        {If download command 1-3, do the following}
+        if FDownloadMode > 0 then
+          begin
+  //        {Update GUI - Loading RAM}
+  ///        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtLoadingRAM));
+          {Send count and longs}
+          SetLength(TxBuf, (1+FBinSize)*11);
+          TxBuffLength := 0;
+          AppendLong(FBinSize);
+          for i := 0 to FBinSize-1 do
+            begin
+  //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgress));
+            AppendLong(PIntegerArray(FBinImage)[i]);
+            end;
+          XBee.SendUDP(TxBuf);
+  //        {Update GUI - Verifying RAM}
+  //        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingRAM));
+          {Receive ram checksum pass/fail}
+          if ReceiveBit(True, 2500) = 1 then raise Exception.Create('RAM Checksum Error');//Error(ord(mtRAMChecksumError) + (strtoint(FComPort) shl 16));
+          {If download command 2-3, do the following}
+          if FDownloadMode > 1 then
+            begin
+  //          {Update GUI - Programming EEPROM}
+  //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgrammingEEPROM));
+            {Receive eeprom program pass/fail}
+            if ReceiveBit(True, 5000) = 1 then raise Exception.Create('EEPROM Programming Error');//Error(ord(mtEEPROMProgrammingError) + (strtoint(FComPort) shl 16));
+  //          {Update GUI - Verifying EEPROM}
+  //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingEEPROM));
+            {Receive eeprom verify pass/fail}
+            if ReceiveBit(True, 2500) = 1 then raise Exception.Create('EEPROM Verify Error');//Error(ord(mtEEPROMVerifyError) + (strtoint(FComPort) shl 16));
+            end;
+          end;
+  //      CloseComm;
         end;
-      end;
-//      CloseComm;
-
   finally
     XBee.DisconnectSerialUDP;
 //    XBee.DisconnectTCP;
@@ -638,6 +643,10 @@ begin
 end;
 
 Initialization
-  getmem(Buffer, ImageLimit);
+  getmem(FBinImage, ImageLimit);
+  FBinSize := 0;
+
+Finalization
+  freemem(FBinImage);
 
 end.
