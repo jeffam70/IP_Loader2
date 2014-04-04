@@ -106,6 +106,7 @@ procedure TForm1.Button1Click(Sender: TObject);
 //  IP : TIDStack;
 begin
   XBee.SetItem(xbIO2State, pinOutHigh);
+  caption := inttostr(XBee.UDPRoundTrip);
 //  IP := TIDStack.Create;
 //  IP.NewInstance;
 //  IPAddr.Text := IP.LocalAddress;
@@ -117,6 +118,7 @@ end;
 procedure TForm1.Button2Click(Sender: TObject);
 begin
   XBee.SetItem(xbIO2State, pinOutLow);
+  caption := inttostr(XBee.UDPRoundTrip);
 end;
 
 {----------------------------------------------------------------------------------------------------}

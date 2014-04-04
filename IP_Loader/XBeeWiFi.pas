@@ -112,6 +112,8 @@ type
     FPTxBuf       : PxbTxPacket;              {Pointer to structured transmit packet (shares memory space with TxBuf)}
     FPRxBuf       : PxbRxPacket;              {Pointer to structured receive packet (shares memory space with RxBuf)}
     FResponseList : array of TResponse;       {Dynamic array of received responses (from packet's parameter field); multiple XBee may respond to broadcast message}
+    FMaxDataSize  : Cardinal;                 {Maximum size allowed for data (payload) of packet}
+    FUDPRoundTrip : Integer;                  {Measured round-trip time for UDP Application Packets; -1 means never received expected response}
     {Getters and Setters}
     function  GetRemoteIPAddr: String;
     procedure SetRemoteIPAddr(Value: String);
@@ -148,6 +150,7 @@ type
 //    property LocalTCPPort : Cardinal read GetLocalTCPPort write SetLocalTCPPort;
     property SerialTimeout : Integer index 0 read GetTimeout write SetTimeout;                       {Read-timeout for serial service}
     property ApplicationTimeout : Integer index 1 read GetTimeout write SetTimeout;                  {Read-timeout for application service}
+    property UDPRoundTrip : Integer read FUDPRoundTrip;                                              {Get last round-trip time for UDP App Packets}
   private
     { Private declarations }
     {XBee Application Service buffer transmit methods}
@@ -196,6 +199,8 @@ const
   {Misc}
   DefaultSerialTimeout      = 2000;
   DefaultApplicationTimeout = 1000;
+  DefaultBufferSize         = 1500;              {Default size for receive buffer(s)}
+  DefaultMaxDataSize        = 1400;
 
 implementation
 
@@ -288,8 +293,12 @@ begin
   FAppUDPClient.BoundPort := $BEE;                           {Bind Application UDP Client to port $BEE (local and remote side)}
   FAppUDPClient.Port := $BEE;
   FAppUDPClient.ReceiveTimeout := DefaultApplicationTimeout; {Set it's read-timeout}
-  SetLength(FRxBuf, 1500);                                   {Set receive buffer length}
+  SetLength(FRxBuf, DefaultBufferSize);                      {Set receive buffer length}
   FPRxBuf := PxbRxPacket(@FRxBuf[0]);                        {Point PRxBuf at RxBuf}
+ { TODO : Consider determining real max data packet size from module. }
+  FMaxDataSize := DefaultMaxDataSize;                        {Set data packet size to default}
+{ TODO : Reset different items when XBee target changed. }
+  FUDPRoundTrip := -1;                                        {Initialize round-trip measurement}
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -435,19 +444,53 @@ function TXBeeWiFi.SendUDP(Data: TIDBytes; UseAppService: Boolean = True): Boole
  This normally uses the Application Service to verify the data packet was received (packet acknowlegement).
  Set UseAppService to False to use Serial Service instead (no verified receipt).
  Returns True if successful, False if not.}
+var
+  TempTxBuff : TIdBytes;  {Temporary transmission buffer used only when Data is too big}
+  Idx        : Cardinal;  {Holds index of next byte to transmit}
+  PacketSize : Cardinal;  {Holds size of next packet being transmitted}
+
+    {----------------}
+
+    function Send(Buffer: TIdBytes): Boolean;
+    begin
+      Result := False;
+      if UseAppService then                                                                                      {Use Application Service?}
+        begin {Prep and send data using Application Service}
+        PrepareAppBuffer(xbData, '', -1, Buffer);                                                                {  Prepare data packet}
+        Result := TransmitAppUDP;                                                                                {  and transmit it using Application Service}
+        end
+      else
+        begin                                                                                                    {Else}
+        FSerUDPClient.SendBuffer(Buffer);                                                                        {  Transmit it using Serial Service}
+        Result := True;
+        end;
+    end;
+
+    {----------------}
+
 begin
-{ TODO : Make SendUDP fail if Data is too large }
-{ TODO : Make SendUDP fail if Data is empty }
-  if UseAppService then
-    begin {Prep and send data using Application Service}
-    PrepareAppBuffer(xbData, '', -1, Data);                                                                  {Prepare data packet}
-    Result := TransmitAppUDP;                                                                                {and transmit it}
-    end
+  if not Assigned(Data) then raise Exception.Create('Error: Need pointer to data.');
+  if Length(Data) = 0 then raise Exception.Create('Error: Data is empty.');
+  if Length(Data) <= FMaxDataSize then
+    Result := Send(Data)
   else
     begin
-    SetLength(FTxBuf, Length(Data));                                                                         {Size Tx buffer to raw data size}
-    Move(Data[0], FTxBuf[0], Length(Data));                                                                  {Move data into Tx buffer}
-    FSerUDPClient.SendBuffer(FTxBuf);                                                                        {Send to Remote IP}
+    try
+      Idx := 0;
+      PacketSize := FMaxDataSize;
+      SetLength(TempTxBuff, PacketSize);
+      Move(Data[Idx], TempTxBuff[0], PacketSize);
+      while Send(TempTxBuff) and (Idx+PacketSize < Length(Data)) do
+        begin
+        inc(Idx, PacketSize);
+        PacketSize := Min(PacketSize, Length(Data)-Idx);
+        SetLength(TempTxBuff, PacketSize);
+        Move(Data[Idx], TempTxBuff[0], PacketSize);
+        end;
+      Result := Idx+PacketSize = Length(Data);
+    finally
+      SetLength(TempTxBuff, 0);
+    end;
     end;
 end;
 
@@ -460,12 +503,10 @@ function TXBeeWiFi.ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;
 var
   Count : Integer;
 begin
-//  FSerUDPClient.BoundIP := '192.168.1.136';
-//  FSerUDPClient.Connect;
-//  if FSerUDPClient.Connected then showmessage('Connected') else showmessage('Not Connected');
-  SetLength(Data, 1500);                                                                                     {Resize buffer to standard max packet size}
+  if not FSerUDPClient.Connected then raise Exception.Create('Error: Serial UDP socket must first be connected.');
+  SetLength(Data, DefaultBufferSize);                                                                        {Resize buffer to standard max packet size}
   Count := FSerUDPClient.ReceiveBuffer(Data, Timeout);
-  SetLength(Data, Count);                                               {Receive data and resize buffer to exactly fit it}
+  SetLength(Data, Count);                                                                                    {Receive data and resize buffer to exactly fit it}
   Result := Length(Data) > 0;
 end;
 
@@ -548,7 +589,6 @@ var
   ParamValue  : Cardinal;
 begin
 { TODO : Make PrepareBuffer error out if Param data doesn't match command type }
-{ TODO : Make PrepareBuffer error out if data command and ParamData is empty }
   if Command in xbStrCommands then                                                    {If command is a string-type command}
     ParamLength := Length(ParamStr)                                                   {  note length in bytes/characters}
   else                                                                                {Else}
@@ -619,7 +659,7 @@ const
     {Unless we've received all the expected packets, check for another UDP packet for up to FTimeout milliseconds.
     Return True/False (packet received) and store packet size in Count.}
     begin
-      Result := (RequiredRx < PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp + ord(ExpectMultiple)*MuliRsp);
+      Result := RequiredRx < PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp + ord(ExpectMultiple)*MuliRsp;
       if Result then
         begin
         Count := FAppUDPClient.ReceiveBuffer(FRxBuf{, FTimeout});
@@ -640,6 +680,7 @@ begin
   SetLength(FResponseList, 0);                                                                               {Clear the response list}
   try
     {Try to transmit; IP exceptions handled}
+    FUDPRoundTrip := Ticks;                                                                                  {Note start time for round-trip measurement}
     FAppUDPClient.SendBuffer(FTxBuf);                                                                        {Send to Remote IP}
     {Transmitted fine, retrieve}
     while AppUDPResponse do                                                                                  {For every App Service UDP Packet received}
@@ -649,6 +690,7 @@ begin
         if (FPRxBuf.CommandID = $80) then RequiredRx := RequiredRx or PacketAck;                             {Note when we received XBee Wi-Fi UDP ACK packet}
         if (FPRxBuf.CommandID = (FPTxBuf.CommandID or $80)) and (FPRxBuf.ATCommand = FPTxBuf.ATCommand) then
           begin
+          FUDPRoundTrip := GetTickDiff(FUDPRoundTrip, Ticks);                                                {Calculate round-trip time (milliseconds)}
           RequiredRx := RequiredRx or CommandRsp or (FPRxBuf.Status shl 2);                                  {Note when we received XBee Wi-Fi UDP command response packet}
           Status := Status or FPRxBuf.Status;
           inc(RLIdx);
@@ -672,7 +714,8 @@ begin
 //      2 : self.Caption := self.Caption + ' - Invalid Command';
 //      3 : self.Caption := self.Caption + ' - Invalid Parameter';
 //    end;
-    Result := (RequiredRx = PacketAck + CommandRsp) and (Status = 0);
+    Result := (RequiredRx >= PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp) and (Status = 0);
+    if not Result then FUDPRoundTrip := -1;
   except
     {Handle known exceptions}
     on E: EIdSocketError do
