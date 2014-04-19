@@ -15,9 +15,8 @@ uses
   System.SysUtils, System.StrUtils, System.Math,
   mmsystem,
   FMX.Dialogs,
-  IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack;
-
-//  Debug;
+  IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack,
+  Debug;
 
 type
   {Define XBee WiFi's udp commands}
@@ -107,17 +106,18 @@ type
 
   TXBeeWiFi = class(TObject)
   protected
-    FSerTCPClient : TIdTCPClient;             {TCP Client for XBee's Serial Communication Service (usually port $2616 (9750))}
-    FSerUDPClient : TIdUDPClient;             {UDP Client for XBee's Serial Communication Service (usually port $2616 (9750))}
-    FAppUDPClient : TIdUDPClient;             {UDP Client for XBee's Application Service (always port $BEE (3054))}
+    FSerTCPClient    : TIdTCPClient;             {TCP Client for XBee's Serial Communication Service (usually port $2616 (9750))}
+    FSerUDPClient    : TIdUDPClient;             {UDP Client for XBee's Serial Communication Service (usually port $2616 (9750))}
+    FAppUDPClient    : TIdUDPClient;             {UDP Client for XBee's Application Service (always port $BEE (3054))}
     {IP Buffer}
-    FTxBuf        : TIdBytes;                 {Raw transmit packet (resized per packet)}
-    FRxBuf        : TIdBytes;                 {Raw receive packet stream (fixed to MaxPacketSize)}
-    FPTxBuf       : PxbTxPacket;              {Pointer to structured transmit packet (shares memory space with TxBuf)}
-    FPRxBuf       : PxbRxPacket;              {Pointer to structured receive packet (shares memory space with RxBuf)}
-    FResponseList : array of TResponse;       {Dynamic array of received responses (from packet's parameter field); multiple XBee may respond to broadcast message}
-    FMaxDataSize  : Cardinal;                 {Maximum size allowed for data (payload) of packet}
-    FUDPRoundTrip : Integer;                  {Measured round-trip time for UDP Application Packets; -1 means never received expected response}
+    FTxBuf           : TIdBytes;                 {Raw transmit packet (resized per packet)}
+    FRxBuf           : TIdBytes;                 {Raw receive packet stream (fixed to MaxPacketSize)}
+    FPTxBuf          : PxbTxPacket;              {Pointer to structured transmit packet (shares memory space with TxBuf)}
+    FPRxBuf          : PxbRxPacket;              {Pointer to structured receive packet (shares memory space with RxBuf)}
+    FResponseList    : array of TResponse;       {Dynamic array of received responses (from packet's parameter field); multiple XBee may respond to broadcast message}
+    FMaxDataSize     : Cardinal;                 {Maximum size allowed for data (payload) of packet}
+    FUDPRoundTrip    : Integer;                  {Measured round-trip time for UDP Application Packets; -1 means never received expected response}
+    FMaxUDPRoundTrip : Integer;                  {The maximum UDP round-trip time ever measured for the device}
     {Getters and Setters}
     function  GetRemoteIPAddr: String;
     procedure SetRemoteIPAddr(Value: String);
@@ -303,7 +303,8 @@ begin
  { TODO : Consider determining real max data packet size from module. }
   FMaxDataSize := DefaultMaxDataSize;                        {Set data packet size to default}
 { TODO : Reset different items when XBee target changed. }
-  FUDPRoundTrip := -1;                                        {Initialize round-trip measurement}
+  FUDPRoundTrip := -1;                                        {Initialize round-trip measurement};
+  FMaxUDPRoundTrip := 0;
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -684,6 +685,7 @@ var
   RequiredRx    : Cardinal;             // bit 0 = Packet ACK received, bit 1 = Command response received
   Count         : Cardinal;             // Number of bytes received in response
   Status        : Cardinal;             // $0-OK, $1-Error, $2=Invalid command, $3=Invalid parameter
+  TxCount       : Cardinal;             // Number of transmissions to try
 const
   {Required Rx codes}
   PacketAck  = $01;                     {RequiredRx's code for packet ACK received}
@@ -699,7 +701,7 @@ const
       Result := RequiredRx < PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp + ord(ExpectMultiple)*MuliRsp;
       if Result then
         begin
-        Count := FAppUDPClient.ReceiveBuffer(FRxBuf{, FTimeout});
+        Count := FAppUDPClient.ReceiveBuffer(FRxBuf);
         Result := Count > 0;
         end;
     end;
@@ -710,34 +712,40 @@ begin
 { TODO : Remove debugging Info }
 { TODO : Enhance SetItem log errors }
 //  self.Caption := 'Transmitting...';
-  Result := False;                                                                                           {Initialize result to false}
-  RequiredRx := 0;                                                                                           {Initialize required reception to none}
-  Status := 0;                                                                                               {Initialize status}
-  RLIdx := -1;                                                                                               {Clear response list index}
-  SetLength(FResponseList, 0);                                                                               {Clear the response list}
   try
-    {Try to transmit; IP exceptions handled}
-    FUDPRoundTrip := Ticks;                                                                                  {Note start time for round-trip measurement}
-    FAppUDPClient.SendBuffer(FTxBuf);                                                                        {Send to Remote IP}
-    {Transmitted fine, retrieve}
-    while AppUDPResponse do                                                                                  {For every App Service UDP Packet received}
-      begin {Process each UDP packet received}
-      if FPRxBuf.Number1 xor $4242 = FPRxBuf.Number2 then                                                    {if packet is an XBee Wi-Fi response packet (Number2 is Number1 ^ $4242)}
-        begin {It's an XBee Response packet}
-        if (FPRxBuf.CommandID = $80) then RequiredRx := RequiredRx or PacketAck;                             {Note when we received XBee Wi-Fi UDP ACK packet}
-        if (FPRxBuf.CommandID = (FPTxBuf.CommandID or $80)) and (FPRxBuf.ATCommand = FPTxBuf.ATCommand) then
-          begin
-          RequiredRx := RequiredRx or CommandRsp or (FPRxBuf.Status shl 2);                                  {Note when we received XBee Wi-Fi UDP command response packet}
-          Status := Status or FPRxBuf.Status;
-          inc(RLIdx);
-          SetLength(FResponseList, RLIdx+1);                                                                 {Make room for response}
-          FResponseList[RLIdx].Length := Count-(sizeof(TxbRxPacket)-sizeof(FPRxBuf.ParameterValue));         {Note response length}
-          FResponseList[RLIdx].Status := FPRxBuf.Status;                                                     {Note response status}
-          Move(FPRxBuf.ParameterValue, FResponseList[RLIdx].Data, FResponseList[RLIdx].Length);              {Save response data}
-          FResponseList[RLIdx].Data[FResponseList[RLIdx].Length] := 0;                                       {Null-terminate (in case it's a string)}
+    TxCount := 3;                                                                                              {Set max number of transmissions}
+    repeat                                                                                                     {Loop (in case of retransmission)}
+      Result := False;                                                                                         {  Initialize result to false}
+      RequiredRx := 0;                                                                                         {  Initialize required reception to none}
+      Status := 0;                                                                                             {  Initialize status}
+      RLIdx := -1;                                                                                             {  Clear response list index}
+      SetLength(FResponseList, 0);                                                                             {  Clear the response list}
+      {Try to transmit; IP exceptions handled}
+      FUDPRoundTrip := Ticks;                                                                                  {  Note start time for round-trip measurement}
+      FAppUDPClient.SendBuffer(FTxBuf);                                                                        {  Send to Remote IP}
+      {Transmitted fine, retrieve}
+      while AppUDPResponse do                                                                                  {  For every App Service UDP Packet received}
+        begin {Process each UDP packet received}
+        if FPRxBuf.Number1 xor $4242 = FPRxBuf.Number2 then                                                    {  if packet is an XBee Wi-Fi response packet (Number2 is Number1 ^ $4242)}
+          begin {It's an XBee Response packet}
+          if (FPRxBuf.CommandID = $80) then RequiredRx := RequiredRx or PacketAck;                             {    Note when we received XBee Wi-Fi UDP ACK packet}
+          if (FPRxBuf.CommandID = (FPTxBuf.CommandID or $80)) and (FPRxBuf.ATCommand = FPTxBuf.ATCommand) then
+            begin
+            RequiredRx := RequiredRx or CommandRsp or (FPRxBuf.Status shl 2);                                  {      Note when we received XBee Wi-Fi UDP command response packet}
+            Status := Status or FPRxBuf.Status;
+            inc(RLIdx);
+            SetLength(FResponseList, RLIdx+1);                                                                 {      Make room for response}
+            FResponseList[RLIdx].Length := Count-(sizeof(TxbRxPacket)-sizeof(FPRxBuf.ParameterValue));         {      Note response length}
+            FResponseList[RLIdx].Status := FPRxBuf.Status;                                                     {      Note response status}
+            Move(FPRxBuf.ParameterValue, FResponseList[RLIdx].Data, FResponseList[RLIdx].Length);              {      Save response data}
+            FResponseList[RLIdx].Data[FResponseList[RLIdx].Length] := 0;                                       {      Null-terminate (in case it's a string)}
+            end;
           end;
         end;
-      end;
+      dec(TxCount);
+      Result := (RequiredRx >= PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp) and (Status = 0);
+    until Result or (TxCount = 0);
+    if TxCount < 2 then SendDebugMessage('Retried: ' + inttostr(2-TxCount), True);
 //    case RequiredRx of
 //      0 : self.Caption := 'No Response';
 //      1 : self.Caption := 'Only Ack received';
@@ -750,8 +758,9 @@ begin
 //      2 : self.Caption := self.Caption + ' - Invalid Command';
 //      3 : self.Caption := self.Caption + ' - Invalid Parameter';
 //    end;
-    Result := (RequiredRx >= PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp) and (Status = 0);
     FUDPRoundTrip := ifthen(Result, GetTickDiff(FUDPRoundTrip, Ticks), -1);                                  {Calculate round-trip time (milliseconds)}
+{ TODO : Make FUDPRoundTrip and FMaxUDPRoundTrip reset when remote target is changed. }
+    FMaxUDPRoundTrip := Max(FMaxUDPRoundTrip, FUDPRoundTrip);                                                {Record largest round-trip time (milliseconds)}
   except
     {Handle known exceptions}
     on E: EIdSocketError do
