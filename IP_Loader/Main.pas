@@ -35,6 +35,8 @@ type
     TransmitButton: TButton;
     OpenDialog: TOpenDialog;
     LoadButton: TButton;
+    BroadcastAddress: TEdit;
+    Label1: TLabel;
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure IdentifyButtonClick(Sender: TObject);
@@ -136,7 +138,7 @@ begin
   IPPort.Text := '';
   NodeID.Text := '';
 { TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
-  XBee.RemoteIPAddr := '192.168.1.255';
+  XBee.RemoteIPAddr := ifthen(BroadcastAddress.Text <> '', BroadcastAddress.Text, '192.168.1.255');
   if XBee.GetItem(xbIPAddr, Nums) then
     begin
     for Idx := 0 to High(Nums) do
@@ -348,7 +350,9 @@ procedure TForm1.GenerateResetSignal;
 {Generate Reset Pulse}
 begin
 { TODO : Enhance GenerateResetSignal for errors. }
-  if EnforceXBeeConfiguration then XBee.SetItem(xbOutputState, $0000);            {Start reset pulse}
+  if EnforceXBeeConfiguration then
+    if not XBee.SetItem(xbOutputState, $0000) then            {Start reset pulse}
+      raise Exception.Create('Error Generating Reset Signal');
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -560,7 +564,7 @@ begin
         for i := 1 to 250 do AppendByte(TxHandshake[i] or $FE);                     {Note "or $FE" encodes 1 handshake bit per transmitted byte}
         for i := 1 to 250 + 8 do AppendByte($F9);
 
-        XBee.SendUDP(TxBuf);
+        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Handshake');
 //        XBee.ReceiveUDP(RxBuf, 0, 1000);
 
 //        GenerateResetSignal;
@@ -593,7 +597,7 @@ begin
         SetLength(TxBuf, 11);
         TxBuffLength := 0;
         AppendLong(0);
-        XBee.SendUDP(TxBuf);
+        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending shutdown command');
         GenerateResetSignal;
 //        CloseComm;
         end
@@ -603,7 +607,7 @@ begin
         SetLength(TxBuf, 11);
         TxBuffLength := 0;
         AppendLong(FDownloadMode);
-        XBee.SendUDP(TxBuf);
+        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Download Command');
         {If download command 1-3, do the following}
         if FDownloadMode > 0 then
           begin
@@ -618,7 +622,7 @@ begin
   //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgress));
             AppendLong(PIntegerArray(FBinImage)[i]);
             end;
-          XBee.SendUDP(TxBuf);
+          if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Application Image');
   //        {Update GUI - Verifying RAM}
   //        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingRAM));
           {Receive ram checksum pass/fail}

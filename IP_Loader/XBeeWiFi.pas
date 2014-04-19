@@ -7,13 +7,15 @@ A combination of the XBee's "XBee Application Service" and its "Serial Communica
 }
 
 { TODO : Check all comments }
+{ TODO : Resolve all warnings }
 
 interface
 
 uses
   System.SysUtils, System.StrUtils, System.Math,
   FMX.Dialogs,
-  IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack;
+  IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack,
+  Debug;
 
 type
   {Define XBee WiFi's udp commands}
@@ -445,23 +447,23 @@ function TXBeeWiFi.SendUDP(Data: TIDBytes; UseAppService: Boolean = True): Boole
  Set UseAppService to False to use Serial Service instead (no verified receipt).
  Returns True if successful, False if not.}
 var
-  TempTxBuff : TIdBytes;  {Temporary transmission buffer used only when Data is too big}
-  Idx        : Cardinal;  {Holds index of next byte to transmit}
-  PacketSize : Cardinal;  {Holds size of next packet being transmitted}
+  TempTxBuff     : TIdBytes;  {Temporary transmission buffer used only when Data is too big}
+  Idx            : Integer;   {Holds index of next byte to transmit}
+  PacketSize     : Cardinal;  {Holds size of next packet being transmitted}
 
     {----------------}
 
     function Send(Buffer: TIdBytes): Boolean;
     begin
       Result := False;
-      if UseAppService then                                                                                      {Use Application Service?}
+      if UseAppService then                                                                      {Use Application Service?}
         begin {Prep and send data using Application Service}
-        PrepareAppBuffer(xbData, '', -1, Buffer);                                                                {  Prepare data packet}
-        Result := TransmitAppUDP;                                                                                {  and transmit it using Application Service}
+        PrepareAppBuffer(xbData, '', -1, Buffer);                                                {  Prepare data packet}
+        Result := TransmitAppUDP;                                                                {  and transmit it using Application Service}
         end
       else
-        begin                                                                                                    {Else}
-        FSerUDPClient.SendBuffer(Buffer);                                                                        {  Transmit it using Serial Service}
+        begin                                                                                    {Else}
+        FSerUDPClient.SendBuffer(Buffer);                                                        {  Transmit it using Serial Service}
         Result := True;
         end;
     end;
@@ -469,27 +471,47 @@ var
     {----------------}
 
 begin
+  Result := False;
   if not Assigned(Data) then raise Exception.Create('Error: Need pointer to data.');
   if Length(Data) = 0 then raise Exception.Create('Error: Data is empty.');
-  if Length(Data) <= FMaxDataSize then
-    Result := Send(Data)
-  else
+  if Length(Data) <= FMaxDataSize then                                                           {Data small enough for a single packet?}
+    Result := Send(Data)                                                                         {  Send data in full}
+  else                                                                                           {Else, break up into multiple timed packets}
     begin
     try
-      Idx := 0;
+
+//      PrevPacketSize := 1;                                                                       {  Prep for first packet}
+//      NextPacketSize := FMaxDataSize;
+//      Idx := -PrevPacketSize;
+//      FUDPRoundTrip := -1;
+//      while (Idx < 0) and (PrevPacketSize > 0) and Send(TempTxBuff) do                           {  Loop for all necessary packets}
+//        begin {While first packet not sent and latest packet sent and more to go}
+//        if Idx > -1 then sleep(Trunc(FMaxDataSize*0.30*10/115200*1000-FUDPRoundTrip));           {    Wait for 30% of "full data" to transmit out UART}
+//        inc(Idx, PrevPacketSize);                                                                {    Position for start of next packet}
+//        SetLength(TempTxBuff, NextPacketSize);                                                   {    Set proper packet size}
+//        Move(Data[Idx], TempTxBuff[0], NextPacketSize);                                          {    Prepare packet}
+//        PrevPacketSize := NextPacketSize;
+//        NextPacketSize := Min(Trunc(FMaxDataSize*0.30), Length(Data)-Idx-PrevPacketSize);        {    Ensure proper packet size for next time}
+//        end;
+//      Result := Idx+PrevPacketSize = Length(Data);                                               {  Return appropriate result}
+
+      Idx := 0;                                                                                  {  Prep for first packet}
       PacketSize := FMaxDataSize;
-      SetLength(TempTxBuff, PacketSize);
-      Move(Data[Idx], TempTxBuff[0], PacketSize);
-      while Send(TempTxBuff) and (Idx+PacketSize < Length(Data)) do
-        begin
-        inc(Idx, PacketSize);
-        PacketSize := Min(PacketSize, Length(Data)-Idx);
-        SetLength(TempTxBuff, PacketSize);
-        Move(Data[Idx], TempTxBuff[0], PacketSize);
-        end;
-      Result := Idx+PacketSize = Length(Data);
+      repeat                                                                                     {  Loop for all necessary packets}
+        SendDebugMessage('Iterate', True);
+        SetLength(TempTxBuff, PacketSize);                                                       {    Else, set proper packet size}
+        Move(Data[Idx], TempTxBuff[0], PacketSize);                                              {    Prepare packet}
+{ TODO : Make SendUDP adjust to baud rate }
+        SendDebugMessage('Pausing: ' + inttostr(Max(Trunc(FMaxDataSize*0.30*11/115200*1000-FUDPRoundTrip), 0)) + ' ms.  FUDPRoundTrip: ' + inttostr(FUDPRoundTrip), True);
+        if Idx > 0 then sleep(Max(Trunc(FMaxDataSize*0.30*11/115200*1000-FUDPRoundTrip), 0));    {    If not first packet, wait for 30% of "full data" to transmit out UART}
+        if not Send(TempTxBuff) then break;                                                      {    Send packet; exit if failure}
+        inc(Idx, PacketSize);                                                                    {    Prep for start of next packet}
+        PacketSize := Min(Trunc(FMaxDataSize*0.30), Length(Data)-Idx);                           {    Next packet will be maximum of 30% of "full data," so as not to overflow XBee UART buffer}
+        Result := PacketSize = 0;                                                                {    Total success? (all packets successfully sent)}
+      until Result;                                                                              {    Loop until done}
     finally
       SetLength(TempTxBuff, 0);
+      SendDebugMessage('Exiting', True);
     end;
     end;
 end;
@@ -690,7 +712,6 @@ begin
         if (FPRxBuf.CommandID = $80) then RequiredRx := RequiredRx or PacketAck;                             {Note when we received XBee Wi-Fi UDP ACK packet}
         if (FPRxBuf.CommandID = (FPTxBuf.CommandID or $80)) and (FPRxBuf.ATCommand = FPTxBuf.ATCommand) then
           begin
-          FUDPRoundTrip := GetTickDiff(FUDPRoundTrip, Ticks);                                                {Calculate round-trip time (milliseconds)}
           RequiredRx := RequiredRx or CommandRsp or (FPRxBuf.Status shl 2);                                  {Note when we received XBee Wi-Fi UDP command response packet}
           Status := Status or FPRxBuf.Status;
           inc(RLIdx);
@@ -715,7 +736,7 @@ begin
 //      3 : self.Caption := self.Caption + ' - Invalid Parameter';
 //    end;
     Result := (RequiredRx >= PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp) and (Status = 0);
-    if not Result then FUDPRoundTrip := -1;
+    FUDPRoundTrip := ifthen(Result, GetTickDiff(FUDPRoundTrip, Ticks), -1);                                  {Calculate round-trip time (milliseconds)}
   except
     {Handle known exceptions}
     on E: EIdSocketError do

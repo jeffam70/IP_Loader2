@@ -61,7 +61,7 @@ object Form1: TForm1
     OnChange = PCPortComboChange
     object PCPortLabel: TLabel
       Height = 17.000000000000000000
-      Position.X = -60.000000000000000000
+      Position.X = -52.000000000000000000
       Position.Y = 2.000000000000000000
       Text = 'Port/ID:'
       Width = 57.000000000000000000
@@ -95,7 +95,7 @@ object Form1: TForm1
     end
     object PortLabel: TLabel
       Height = 17.000000000000000000
-      Position.X = -240.000000000000000000
+      Position.X = -239.000000000000000000
       Position.Y = 2.000000000000000000
       Text = 'MACAddr/IPAddr/IPPort:'
       Width = 141.000000000000000000
@@ -131,5 +131,21 @@ object Form1: TForm1
   object OpenDialog: TOpenDialog
     Left = 16
     Top = 8
+  end
+  object BroadcastAddress: TEdit
+    Touch.InteractiveGestures = [igLongTap, igDoubleTap]
+    TabOrder = 8
+    Position.X = 242.000000000000000000
+    Position.Y = 8.000000000000000000
+    Width = 89.000000000000000000
+    Height = 22.000000000000000000
+    KillFocusByReturn = False
+    object Label1: TLabel
+      Height = 17.000000000000000000
+      Position.X = -162.000000000000000000
+      Position.Y = 2.000000000000000000
+      Text = 'Broadcast Address (Optional):'
+      Width = 161.000000000000000000
+    end
   end
 end
