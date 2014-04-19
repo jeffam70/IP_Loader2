@@ -12,6 +12,10 @@ THINGS TO DO
   * Dropped UDP Packets
     * Retransmit a limited number of times
 
+* Command
+  * Add check for DL (Destination IP) and set it to be host's IP.
+
+
 * Consider
   * Adding Soft AP mode negotiation
   * Adding Wi-Fi Protected Setup mode (to hardware?)
@@ -48,6 +52,10 @@ THINGS DONE
 * Appliation UDP Client is bound to $BEE.
 * Calculate round-trip time
 
+* Timing
+  * Try making routine to sleep.
+    * Use Sleep(time), but check time before and afterwards.  If delta_time is not close to time, Sleep again for time-delta_time.
+
 * Add TCP
   * To connect
 
@@ -61,6 +69,7 @@ THINGS DONE
   * to set parity
   * to set stop bits
   * to get maximum RF payload
+    * This feature is static, it does not change according to the number of bytes in the XBee's UART
   * to get IP Mask
   * to get IP Gateway
 

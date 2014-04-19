@@ -13,9 +13,11 @@ interface
 
 uses
   System.SysUtils, System.StrUtils, System.Math,
+  mmsystem,
   FMX.Dialogs,
-  IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack,
-  Debug;
+  IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack;
+
+//  Debug;
 
 type
   {Define XBee WiFi's udp commands}
@@ -158,6 +160,7 @@ type
     {XBee Application Service buffer transmit methods}
     procedure PrepareAppBuffer(Command: xbCommand; ParamStr: String = ''; ParamNum: Integer = -1; ParamData: TIdBytes = nil);
     function  TransmitAppUDP(ExpectMultiple: Boolean = False): Boolean;
+    procedure Pause(Duration: Integer);
   end;
 
   {Non-object functions and procedures}
@@ -202,7 +205,7 @@ const
   DefaultSerialTimeout      = 2000;
   DefaultApplicationTimeout = 1000;
   DefaultBufferSize         = 1500;              {Default size for receive buffer(s)}
-  DefaultMaxDataSize        = 1400;
+  DefaultMaxDataSize        = 1392;
 
 implementation
 
@@ -450,6 +453,9 @@ var
   TempTxBuff     : TIdBytes;  {Temporary transmission buffer used only when Data is too big}
   Idx            : Integer;   {Holds index of next byte to transmit}
   PacketSize     : Cardinal;  {Holds size of next packet being transmitted}
+  TimeMetrics    : TTimeCaps;
+  TimeResolution : Cardinal;
+//  MaxSize        : Cardinal;
 
     {----------------}
 
@@ -495,15 +501,22 @@ begin
 //        end;
 //      Result := Idx+PrevPacketSize = Length(Data);                                               {  Return appropriate result}
 
+      TimeResolution := 0;                                                                       {  Request 1 ms timer resolution}
+      if timeGetDevCaps(@TimeMetrics, SizeOf(TimeMetrics)) = TIMERR_NOERROR then
+        begin
+        TimeResolution := Min(Max(TimeMetrics.wPeriodMin, 1), TimeMetrics.wPeriodMax);
+        timeBeginPeriod(TimeResolution);
+        end;
+
       Idx := 0;                                                                                  {  Prep for first packet}
       PacketSize := FMaxDataSize;
       repeat                                                                                     {  Loop for all necessary packets}
-        SendDebugMessage('Iterate', True);
+//        SendDebugMessage('Iterate', True);
         SetLength(TempTxBuff, PacketSize);                                                       {    Else, set proper packet size}
         Move(Data[Idx], TempTxBuff[0], PacketSize);                                              {    Prepare packet}
 { TODO : Make SendUDP adjust to baud rate }
-        SendDebugMessage('Pausing: ' + inttostr(Max(Trunc(FMaxDataSize*0.30*11/115200*1000-FUDPRoundTrip), 0)) + ' ms.  FUDPRoundTrip: ' + inttostr(FUDPRoundTrip), True);
-        if Idx > 0 then sleep(Max(Trunc(FMaxDataSize*0.30*11/115200*1000-FUDPRoundTrip), 0));    {    If not first packet, wait for 30% of "full data" to transmit out UART}
+//        SendDebugMessage('Pausing: ' + inttostr(Max(Trunc(FMaxDataSize*0.30*11/115200*1000-FUDPRoundTrip), 0)) + ' ms.  FUDPRoundTrip: ' + inttostr(FUDPRoundTrip), True);
+        if Idx > 0 then Pause(Max(Trunc(FMaxDataSize*0.30*11/115200*1000-FUDPRoundTrip), 0));    {    If not first packet, wait for 30% of "full data" to transmit out UART}
         if not Send(TempTxBuff) then break;                                                      {    Send packet; exit if failure}
         inc(Idx, PacketSize);                                                                    {    Prep for start of next packet}
         PacketSize := Min(Trunc(FMaxDataSize*0.30), Length(Data)-Idx);                           {    Next packet will be maximum of 30% of "full data," so as not to overflow XBee UART buffer}
@@ -511,7 +524,9 @@ begin
       until Result;                                                                              {    Loop until done}
     finally
       SetLength(TempTxBuff, 0);
-      SendDebugMessage('Exiting', True);
+//      SendDebugMessage('Exiting', True);
+      if TimeResolution > 0 then
+        timeEndPeriod(TimeResolution);
     end;
     end;
 end;
@@ -665,7 +680,7 @@ function TXBeeWiFi.TransmitAppUDP(ExpectMultiple: Boolean = False): Boolean;
  The full response packet can be seen in PRxBuf.}
 var
   RLIdx         : Integer;              // response list index
-  IP            : String;
+//  IP            : String;
   RequiredRx    : Cardinal;             // bit 0 = Packet ACK received, bit 1 = Command response received
   Count         : Cardinal;             // Number of bytes received in response
   Status        : Cardinal;             // $0-OK, $1-Error, $2=Invalid command, $3=Invalid parameter
@@ -750,6 +765,23 @@ begin
 end;
 
 {----------------------------------------------------------------------------------------------------}
+
+procedure TXBeeWiFi.Pause(Duration: Integer);
+{Pause executed for Duration milliseconds, as close to the desired time as possible accomidating for process start variances}
+var
+  STime, ETime : Integer;
+begin
+  if Duration < 1 then exit;
+  STime := Ticks;                                      {Get start time}
+  ETime := STime;                                      {Prep for first pause}
+  repeat
+//    SendDebugMessage(inttostr(Duration - GetTickDiff(STime, ETime)) + ' more...', True);
+    Sleep(Duration - GetTickDiff(STime, ETime));       {Pause for remaining time}
+    ETime := Ticks;                                    {Check current time}
+  until Duration - GetTickDiff(STime, ETime) < 2;      {If pause was too short, try again}
+end;
+
+{----------------------------------------------------------------------------------------------------}
 {----------------------------------------------------------------------------------------------------}
 {-------------------------------- Non-Object Functions and Procedure --------------------------------}
 {----------------------------------------------------------------------------------------------------}
@@ -765,8 +797,6 @@ end;
 
 function FormatMACAddr(AddrHigh, AddrLow: Cardinal): String;
 {Return MAC Address (48-bit number in MacAddrHigh:MaccAddrLow) in standard string format}
-var
-  Idx : Cardinal;
 begin
   Result := Format('%.2x:%.2x:%.2x:%.2x:%.2x:%.2x', [AddrHigh shr 8 and $FF, AddrHigh and $FF, AddrLow shr 24 and $FF, AddrLow shr 16 and $FF, AddrLow shr 8 and $FF, AddrLow and $FF]);
 end;

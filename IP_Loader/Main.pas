@@ -391,7 +391,7 @@ begin
     Validate(xbIO2State, pinOutHigh);                                                        {    Ensure I/O is set to output high}
     Validate(xbOutputMask, $7FFF);                                                           {    Ensure output mask is proper (default, in this case)}
     Validate(xbIO2Timer, 1);                                                                 {    Ensure DIO2's timer is set to 100 ms}
-    Validate(xbSerialMode, TransparentMode);                                                 {    Ensure Serial Mode is transparent}
+    Validate(xbSerialMode, TransparentMode {APIwoEscapeMode} {APIwEscapeMode});              {    Ensure Serial Mode is transparent}
     Validate(xbSerialBaud, Baud115200);                                                      {    Ensure baud rate is 115,200 bps}
     Validate(xbSerialParity, ParityNone);                                                    {    Ensure parity is none}
     Validate(xbSerialStopBits, StopBits1);                                                   {    Ensure stop bits is 1}
