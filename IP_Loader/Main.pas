@@ -417,17 +417,73 @@ var
   FDownloadMode : Byte;
 
 const
-  {The TxHandshake array consists of 250 bytes representing the bit 0 values (0 or 1) of each of 250 iterations of the LFSR (seeded with ASCII 'P') described above.}
-  TxHandshake : array[1..250] of byte = (0,1,0,1,1,1,0,0,1,1,1,1,0,1,0,1,1,1,1,1,0,0,0,1,1,1,0,0,1,0,1,0,0,0,1,1,1,1,0,0,0,0,1,0,0,1,0,0,1,0,1,1,1,1,0,0,1,0,0,0,1,0,0,0,
+  {After reset, the Propeller's exact clock rate is not known by either the host or the Propeller itself, so communication with the Propeller takes place based on
+   a host-transmitted timing template that the Propeller uses to read the stream and generate the responses.  The host first transmits the 2-bit timing template,
+   then transmits a 250-bit Tx handshake, followed by 250 timing templates (one for each Rx handshake bit expected) which the Propeller uses to properly transmit
+   the Rx handshake sequence.  Finally, the host transmits another eight timing templates (one for each bit of the Propeller's version number expected) which the
+   Propeller uses to properly transmit it's 8-bit hardware/firmware version number.
+
+   After the Tx Handshake and Rx Handshake are properly exchanged, the host and Propeller are considered "connected," at which point the host can send a download
+   command followed by image size and image data, or simply end the communication.
+
+   PROPELLER HANDSHAKE SEQUENCE: The handshake (both Tx and Rx) are based on a Linear Feedback Shift Register (LFSR) tap sequence that repeats only after 255
+   iterations.  The generating LFSR can be created in Pascal code as the following function (assuming FLFSR is pre-defined Byte variable that is set to ord('P')
+   prior to the first call of IterateLFSR).  This is the exact function that was used in previous versions of the Propeller Tool and Propellent software.
+
+    function IterateLFSR: Byte;
+    begin //Iterate LFSR, return previous bit 0
+      Result := FLFSR and $01;
+      FLFSR := FLFSR shl 1 and $FE or (FLFSR shr 7 xor FLFSR shr 5 xor FLFSR shr 4 xor FLFSR shr 1) and 1;
+    end;
+
+   The handshake bit stream consists of the lowest bit value of each 8-bit result of the LFSR described above.  This LFSR has a domain of 255 combinations, but
+   the host only transmits the first 250 bits of the pattern, afterwards, the Propeller generates and transmits the next 250-bits based on continuing with the same
+   LFSR sequence.  In this way, the host-transmitted (host-generated) stream ends 5 bits before the LFSR starts repeating the initial sequence, and the host-received
+   (Propeller generated) stream that follows begins with those remaining 5 bits and ends with the leading 245 bits of the host-transmitted stream.
+
+   For speed and compression reasons, this handshake stream has been encoded as tightly as possible into the pattern described below.
+
+   The TxHandshake array consists of 209 bytes that are encoded to represent the required '1' and '0' timing template bits, 250 bits representing the
+   lowest bit values of 250 iterations of the Propeller LFSR (seeded with ASCII 'P').}
+  TxHandshake : array[1..209] of byte = ($49,                                                              {First timing template ('1' and '0') plus first two bits of handshake ('0' and '1')}
+                                         $AA,$52,$A5,$AA,$25,$AA,$D2,$CA,$52,$25,$D2,$D2,$D2,$AA,$49,$92,  {Remaining 248 bits of handshake...}
+                                         $C9,$2A,$A5,$25,$4A,$49,$49,$2A,$25,$49,$A5,$4A,$AA,$2A,$A9,$CA,
+                                         $AA,$55,$52,$AA,$A9,$29,$92,$92,$29,$25,$2A,$AA,$92,$92,$55,$CA,
+                                         $4A,$CA,$CA,$92,$CA,$92,$95,$55,$A9,$92,$2A,$D2,$52,$92,$52,$CA,
+                                         $D2,$CA,$2A,$FF,
+                                         $29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,  {250 timing templates ('1' and '0') to receive 250-bit handshake from Propeller.}
+                                         $29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,  {This is encoded as two pairs per byte; 125 bytes}
+                                         $29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,
+                                         $29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,
+                                         $29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,
+                                         $29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,
+                                         $29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,
+                                         $29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,$29,
+                                         $29,$29,$29,$29,                                                  {8 timing templates ('1' and '0') to receive 8-bit Propeller version; two pairs per byte; 4 bytes}
+                                         $93,$92,$92,$92,$92,$92,$92,$92,$92,$92,$F2);                     {Download command (1; program RAM and run); 11 bytes}
+
+  {The RxHandshake array consists of 125 bytes that are encoded to represent the expected 250 bit continuing LFSR stream started by the TxHandshake; 2-bits per byte.}
+  RxHandshake : array[1..125] of byte = ($EE,$CE,$CE,$CF,$EF,$CF,$EE,$EF,$CF,$CF,$EF,$EF,$CF,$CE,$EF,$CF,
+                                         $EE,$EE,$CE,$EE,$EF,$CF,$CE,$EE,$CE,$CF,$EE,$EE,$EF,$CF,$EE,$CE,
+                                         $EE,$CE,$EE,$CF,$EF,$EE,$EF,$CE,$EE,$EE,$CF,$EE,$CF,$EE,$EE,$CF,
+                                         $EF,$CE,$CF,$EE,$EF,$EE,$EE,$EE,$EE,$EF,$EE,$CF,$CF,$EF,$EE,$CE,
+                                         $EF,$EF,$EF,$EF,$CE,$EF,$EE,$EF,$CF,$EF,$CF,$CF,$CE,$CE,$CE,$CF,
+                                         $CF,$EF,$CE,$EE,$CF,$EE,$EF,$CE,$CE,$CE,$EF,$EF,$CF,$CF,$EE,$EE,
+                                         $EE,$CE,$CF,$CE,$CE,$CF,$CE,$EE,$EF,$EE,$EF,$EF,$CF,$EF,$CE,$CE,
+                                         $EF,$CE,$EE,$CE,$EF,$CE,$CE,$EE,$CF,$CF,$CE,$CF,$CF);
+
+//  {The TxHandshake array consists of 250 bytes representing the bit 0 values (0 or 1) of each of 250 iterations of the LFSR (seeded with ASCII 'P') described above.}
+{  TxHandshake : array[1..250] of byte = (0,1,0,1,1,1,0,0,1,1,1,1,0,1,0,1,1,1,1,1,0,0,0,1,1,1,0,0,1,0,1,0,0,0,1,1,1,1,0,0,0,0,1,0,0,1,0,0,1,0,1,1,1,1,0,0,1,0,0,0,1,0,0,0,
                                          1,1,0,1,1,0,1,1,1,0,0,0,1,0,1,1,0,0,1,1,0,0,1,0,1,1,0,1,1,0,0,1,0,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,0,1,0,1,1,0,1,0,0,1,1,1,1,1,
                                          1,1,1,0,0,1,1,0,1,1,1,1,0,1,1,1,0,1,0,0,0,0,0,0,0,1,0,1,0,1,1,0,0,0,1,1,0,0,1,1,1,0,0,0,0,0,0,1,1,1,1,1,0,1,0,0,1,0,1,0,1,0,0,1,
                                          0,0,0,0,0,1,0,0,0,0,1,1,1,0,1,1,1,1,1,1,0,1,1,0,0,0,0,1,1,0,0,0,1,0,0,1,1,0,0,0,0,0,1,1,0,1,0,0,0,1,0,1,0,0,1,1,0,1);
-
-  {The RxHandshake array consists of 250 bytes representing the bit 0 values (0 or 1) of each of 250 successive iterations of the LFSR of TxHandshake, above.}
-  RxHandshake : array[1..250] of byte = (0,1,0,0,0,0,1,0,1,1,1,0,0,1,1,1,1,0,1,0,1,1,1,1,1,0,0,0,1,1,1,0,0,1,0,1,0,0,0,1,1,1,1,0,0,0,0,1,0,0,1,0,0,1,0,1,1,1,1,0,0,1,0,0,
+}
+//  {The RxHandshake array consists of 250 bytes representing the bit 0 values (0 or 1) of each of 250 successive iterations of the LFSR of TxHandshake, above.}
+{  RxHandshake : array[1..250] of byte = (0,1,0,0,0,0,1,0,1,1,1,0,0,1,1,1,1,0,1,0,1,1,1,1,1,0,0,0,1,1,1,0,0,1,0,1,0,0,0,1,1,1,1,0,0,0,0,1,0,0,1,0,0,1,0,1,1,1,1,0,0,1,0,0,
                                          0,1,0,0,0,1,1,0,1,1,0,1,1,1,0,0,0,1,0,1,1,0,0,1,1,0,0,1,0,1,1,0,1,1,0,0,1,0,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,0,1,0,1,1,0,1,0,0,
                                          1,1,1,1,1,1,1,1,0,0,1,1,0,1,1,1,1,0,1,1,1,0,1,0,0,0,0,0,0,0,1,0,1,0,1,1,0,0,0,1,1,0,0,1,1,1,0,0,0,0,0,0,1,1,1,1,1,0,1,0,0,1,0,1,
                                          0,1,0,0,1,0,0,0,0,0,1,0,0,0,0,1,1,1,0,1,1,1,1,1,1,0,1,1,0,0,0,0,1,1,0,0,0,1,0,0,1,1,0,0,0,0,0,1,1,0,1,0,0,0,1,0,1,0);
+}
 
     {----------------}
 
@@ -558,13 +614,20 @@ begin
 //    if XBee.ConnectTCP then
 //      begin
 //      try
-        SetLength(TxBuf, 1+250+250+8);
-        TxBuffLength := 0;
-        AppendByte($F9);
-        for i := 1 to 250 do AppendByte(TxHandshake[i] or $FE);                     {Note "or $FE" encodes 1 handshake bit per transmitted byte}
-        for i := 1 to 250 + 8 do AppendByte($F9);
 
-        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Handshake');
+//!!        SetLength(TxBuf, 1+250+250+8);
+//!!        TxBuffLength := 0;
+//!!        AppendByte($F9);
+//!!        for i := 1 to 250 do AppendByte(TxHandshake[i] or $FE);                     {Note "or $FE" encodes 1 handshake bit per transmitted byte}
+//!!        for i := 1 to 250 + 8 do AppendByte($F9);
+
+        SetLength(TxBuf, Length(TxHandshake)+11+FBinSize*11);
+        Move(TxHandshake, TxBuf[0], Length(TxHandshake));
+        TxBuffLength := Length(TxHandshake);
+        AppendLong(FBinSize);
+        for i := 0 to FBinSize-1 do AppendLong(PIntegerArray(FBinImage)[i]);
+
+        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Connecting and Transmitting Loader Image');
 //        XBee.ReceiveUDP(RxBuf, 0, 1000);
 
 //        GenerateResetSignal;
@@ -575,56 +638,57 @@ begin
 //      end;
 //      end;
 
-      {Receive connect string}
-      RxCount := 0;
-      i := 1;
-      repeat                                                                      {Loop}
-        r := ReceiveBit(False, 100, False);                                       {  Receive encoded bit}
-        inc(RxCount);
-        if r = RxHandshake[i] then                                                {  Bits match?}
-          inc(i)                                                                  {    Ready to match next RxHandshake bit}
-        else
-          begin                                                                   {  Else (bits don't match)}
-          dec(FRxBuffStart, (i-1)*ord(r < 2));                                    {    Proper encoding (r < 2)?; start with 2nd bit checked and try again. Improper encoding (r > 1)?; may be junk prior to RxHandshake stream, ignore junk}
-          i := 1;                                                                 {    Prep to match first RxHandshake bit}
-          if RxCount > RxBuffSize then showmessage('Hardware Lost');              {    No RxHandshake in stream?  Time out; error}
-          end;
-      until (i > 250);                                                            {Loop until all RxHandshake bits received}
-      {Receive version}
-      for i := 1 to 8 do FVersion := FVersion shr 1 and $7F or ReceiveBit(False, 50) shl 7;
-      if FVersionMode then
-        begin {If version mode, send shutdown command and reset hardware to reboot}
-        SetLength(TxBuf, 11);
-        TxBuffLength := 0;
-        AppendLong(0);
-        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending shutdown command');
-        GenerateResetSignal;
-//        CloseComm;
-        end
-      else
-        begin
-        {Send download command immediately}
-        SetLength(TxBuf, 11);
-        TxBuffLength := 0;
-        AppendLong(FDownloadMode);
-        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Download Command');
-        {If download command 1-3, do the following}
-        if FDownloadMode > 0 then
-          begin
-  //        {Update GUI - Loading RAM}
-  ///        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtLoadingRAM));
-          {Send count and longs}
-          SetLength(TxBuf, (1+FBinSize)*11);
-          TxBuffLength := 0;
-          AppendLong(FBinSize);
-          for i := 0 to FBinSize-1 do
-            begin
-  //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgress));
-            AppendLong(PIntegerArray(FBinImage)[i]);
-            end;
+//!!      {Receive connect string}
+//!!      RxCount := 0;
+//!!      i := 1;
+//!!      repeat                                                                      {Loop}
+//!!        r := ReceiveBit(False, 100, False);                                       {  Receive encoded bit}
+//!!        inc(RxCount);
+//!!        if r = RxHandshake[i] then                                                {  Bits match?}
+//!!          inc(i)                                                                  {    Ready to match next RxHandshake bit}
+//!!        else
+//!!          begin                                                                   {  Else (bits don't match)}
+//!!          dec(FRxBuffStart, (i-1)*ord(r < 2));                                    {    Proper encoding (r < 2)?; start with 2nd bit checked and try again. Improper encoding (r > 1)?; may be junk prior to RxHandshake stream, ignore junk}
+//!!          i := 1;                                                                 {    Prep to match first RxHandshake bit}
+//!!          if RxCount > RxBuffSize then showmessage('Hardware Lost');              {    No RxHandshake in stream?  Time out; error}
+//!!          end;
+//!!      until (i > 250);                                                            {Loop until all RxHandshake bits received}
+//!!      {Receive version}
+//!!      for i := 1 to 8 do FVersion := FVersion shr 1 and $7F or ReceiveBit(False, 50) shl 7;
+//!!      if FVersionMode then
+//!!        begin {If version mode, send shutdown command and reset hardware to reboot}
+//!!        SetLength(TxBuf, 11);
+//!!        TxBuffLength := 0;
+//!!        AppendLong(0);
+//!!        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending shutdown command');
+//!!        GenerateResetSignal;
+//!!//        CloseComm;
+//!!        end
+//!!      else
+//!!        begin
+//!!        {Send download command immediately}
+//!!        SetLength(TxBuf, 11);
+//!!        TxBuffLength := 0;
+//!!        AppendLong(FDownloadMode);
+//!!        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Download Command');
+//!!        {If download command 1-3, do the following}
+//!!        if FDownloadMode > 0 then
+//!!          begin
+//!!  //        {Update GUI - Loading RAM}
+//!!  ///        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtLoadingRAM));
+//!!          {Send count and longs}
+//!!          SetLength(TxBuf, (1+FBinSize)*11);
+//!!          TxBuffLength := 0;
+//!!          AppendLong(FBinSize);
+//!!          for i := 0 to FBinSize-1 do
+//!!            begin
+//!!  //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgress));
+//!!             AppendLong(PIntegerArray(FBinImage)[i]);
+//!!             end;
           if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Application Image');
   //        {Update GUI - Verifying RAM}
   //        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingRAM));
+
           {Receive ram checksum pass/fail}
           if ReceiveBit(True, 2500) = 1 then raise Exception.Create('RAM Checksum Error');//Error(ord(mtRAMChecksumError) + (strtoint(FComPort) shl 16));
           {If download command 2-3, do the following}
@@ -639,9 +703,9 @@ begin
             {Receive eeprom verify pass/fail}
             if ReceiveBit(True, 2500) = 1 then raise Exception.Create('EEPROM Verify Error');//Error(ord(mtEEPROMVerifyError) + (strtoint(FComPort) shl 16));
             end;
-          end;
+//!!          end;
   //      CloseComm;
-        end;
+//!!        end;
   finally
     XBee.DisconnectSerialUDP;
 //    XBee.DisconnectTCP;
