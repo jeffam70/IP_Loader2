@@ -15,6 +15,32 @@ THINGS TO DO
 * Command
   * Add check for DL (Destination IP) and set it to be host's IP.
 
+* Download Method
+  * Switch to compressed calibration pulse + handshake + download command + image size + loader image (single packet)
+  * Loader Image
+    * Full Propeller Application Written in Propeller Assembly
+    * Host sets initial bit period value and target bit period value in loader image (before download) according to default/user-specified crystal speed
+      * May need to be last values in image for implementation simplicity
+    * Should support initial and target 9,600/19,200/38,400/57,600/115,200/230,400/460,800/921,600/1,000,000/1,500,000/2,000,000/3,000,000 baud rates
+    * Handshake:
+      * Uses standard bit encoding (instead of Propeller bit encoding)
+      * Once loader starts, it acknowledges host
+      * Host receives acknowledgement and switches to target baud rate
+      * Host begins final image transmission
+    * Final Image Transmission:
+      * Packetized; image data is encased in a packet wrapper
+        * Packet wrapper leads each packet with a 16-bit Packet ID and a 16-bit Packet Length
+        * Packet wrapper "may" end with a 32-bit CRC32 (if UDP doesn't dump corrupted packets)
+      * First packet's payload leads with an 8-bit download command (Program RAM or EEPROM) and a 24-bit application image size
+      * Each loader-received packet is acknowledged (positively or negatively)
+        * Host retransmits packets that are not acknowledged, or negatively acknowledged
+        * Loader positively acknowledges duplicates, but dumps duplicate data
+        * Loader "may" negatively acknowlege packet and request previous packet (if UDP doens't dump corrupted packets; ie: a corrupted acknowledge from before)
+          * Host retransmits requested packet if necessary
+      * Loader acknowledges Application Image (positively or negatively); this is a RAM Checksum response
+      * Loader acknowledges EEPROM write
+    
+
 * Consider
   * Adding Soft AP mode negotiation
   * Adding Wi-Fi Protected Setup mode (to hardware?)
