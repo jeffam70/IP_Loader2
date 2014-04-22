@@ -445,7 +445,7 @@ const
 
    The TxHandshake array consists of 209 bytes that are encoded to represent the required '1' and '0' timing template bits, 250 bits representing the
    lowest bit values of 250 iterations of the Propeller LFSR (seeded with ASCII 'P').}
-  TxHandshake : array[1..209] of byte = ($49,                                                              {First timing template ('1' and '0') plus first two bits of handshake ('0' and '1')}
+  TxHandshake : array[0..208] of byte = ($49,                                                              {First timing template ('1' and '0') plus first two bits of handshake ('0' and '1')}
                                          $AA,$52,$A5,$AA,$25,$AA,$D2,$CA,$52,$25,$D2,$D2,$D2,$AA,$49,$92,  {Remaining 248 bits of handshake...}
                                          $C9,$2A,$A5,$25,$4A,$49,$49,$2A,$25,$49,$A5,$4A,$AA,$2A,$A9,$CA,
                                          $AA,$55,$52,$AA,$A9,$29,$92,$92,$29,$25,$2A,$AA,$92,$92,$55,$CA,
@@ -463,7 +463,7 @@ const
                                          $93,$92,$92,$92,$92,$92,$92,$92,$92,$92,$F2);                     {Download command (1; program RAM and run); 11 bytes}
 
   {The RxHandshake array consists of 125 bytes that are encoded to represent the expected 250 bit continuing LFSR stream started by the TxHandshake; 2-bits per byte.}
-  RxHandshake : array[1..125] of byte = ($EE,$CE,$CE,$CF,$EF,$CF,$EE,$EF,$CF,$CF,$EF,$EF,$CF,$CE,$EF,$CF,
+  RxHandshake : array[0..124] of byte = ($EE,$CE,$CE,$CF,$EF,$CF,$EE,$EF,$CF,$CF,$EF,$EF,$CF,$CE,$EF,$CF,
                                          $EE,$EE,$CE,$EE,$EF,$CF,$CE,$EE,$CE,$CF,$EE,$EE,$EF,$CF,$EE,$CE,
                                          $EE,$CE,$EE,$CF,$EF,$EE,$EF,$CE,$EE,$EE,$CF,$EE,$CF,$EE,$EE,$CF,
                                          $EF,$CE,$CF,$EE,$EF,$EE,$EE,$EE,$EE,$EF,$EE,$CF,$CF,$EF,$EE,$CE,
@@ -628,6 +628,29 @@ begin
         for i := 0 to FBinSize-1 do AppendLong(PIntegerArray(FBinImage)[i]);
 
         if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Connecting and Transmitting Loader Image');
+
+        if not XBee.ReceiveUDP(RxBuf, AppTimeout) then raise Exception.Create('Error, trouble connecting');
+
+        if Length(RxBuf) <> 129 then raise Exception.Create('Error Invalid response from Propeller');
+
+        i := 0;
+        while i < 125 do
+          begin
+          if RxBuf[i] <> RxHandshake[i] then raise Exception.Create('Error Failed connection');
+          inc(i);
+          end;
+
+        while i < 129 do
+          begin
+          FVersion := FVersion shr 2 and $3F or ((RxBuf[i] and $1) shl 6) or ((RxBuf[i] and $20) shl 2);
+          inc(i);
+          end;
+
+
+
+
+
+
 //        XBee.ReceiveUDP(RxBuf, 0, 1000);
 
 //        GenerateResetSignal;
@@ -685,7 +708,7 @@ begin
 //!!  //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgress));
 //!!             AppendLong(PIntegerArray(FBinImage)[i]);
 //!!             end;
-          if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Application Image');
+//!!          if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Application Image');
   //        {Update GUI - Verifying RAM}
   //        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingRAM));
 
