@@ -611,6 +611,28 @@ begin
   try
     GenerateResetSignal;         {(Enforce XBee Configuration and...) Generate reset signal}
     IndySleep(190);
+
+    {Perform handshake and send Loader image; all as a single packet.  The Loader is a Propeller application to assist with the rest of the loading process
+     in a faster way and with less interstitial timing constaints (more conducive to Internet Protocol (IP) transmissions).}
+    SetLength(TxBuf, Length(TxHandshake)+11+FBinSize*11);                                                      {Set initial packet size}
+    Move(TxHandshake, TxBuf[0], Length(TxHandshake));                                                          {Fill packet with handshake stream (timing template, handshake, and download command)}
+    TxBuffLength := Length(TxHandshake);                                                                       {followed by Loader image's size}
+    AppendLong(FBinSize);
+    for i := 0 to FBinSize-1 do AppendLong(PIntegerArray(FBinImage)[i]);                                       {and the Loader image itself}
+    if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Connecting and Transmitting Loader Image');  {Send connect and Loader packet}
+    { TODO : Revisit handshake receive loop to check for all possibilities and how they are handled. }
+    repeat
+      if not XBee.ReceiveUDP(RxBuf, AppTimeout) then raise Exception.Create('Error, trouble connecting');      {Receive response}
+      if Length(RxBuf) = 0 then
+        raise Exception.Create('Error no response from Propeller')                                             {No response?}
+      else
+        if Length(RxBuf) = 129 then
+          begin
+          for i := 0 to 124 do if RxBuf[i] <> RxHandshake[i] then raise Exception.Create('Error Failed connection'); {Validate handshake response}
+          for i := 125 to 128 do FVersion := (FVersion shr 2 and $3F) or ((RxBuf[i] and $1) shl 6) or ((RxBuf[i] and $20) shl 2); {Parse hardware version}
+          end;
+    until Length(RxBuf) = 129;                                                                                 {Loop if not correct (to flush receive buffer of previous data)}
+
 //    if XBee.ConnectTCP then
 //      begin
 //      try
@@ -621,35 +643,7 @@ begin
 //!!        for i := 1 to 250 do AppendByte(TxHandshake[i] or $FE);                     {Note "or $FE" encodes 1 handshake bit per transmitted byte}
 //!!        for i := 1 to 250 + 8 do AppendByte($F9);
 
-        SetLength(TxBuf, Length(TxHandshake)+11+FBinSize*11);
-        Move(TxHandshake, TxBuf[0], Length(TxHandshake));
-        TxBuffLength := Length(TxHandshake);
-        AppendLong(FBinSize);
-        for i := 0 to FBinSize-1 do AppendLong(PIntegerArray(FBinImage)[i]);
-
-        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Connecting and Transmitting Loader Image');
-
-        if not XBee.ReceiveUDP(RxBuf, AppTimeout) then raise Exception.Create('Error, trouble connecting');
-
-        if Length(RxBuf) <> 129 then raise Exception.Create('Error Invalid response from Propeller');
-
-        i := 0;
-        while i < 125 do
-          begin
-          if RxBuf[i] <> RxHandshake[i] then raise Exception.Create('Error Failed connection');
-          inc(i);
-          end;
-
-        while i < 129 do
-          begin
-          FVersion := FVersion shr 2 and $3F or ((RxBuf[i] and $1) shl 6) or ((RxBuf[i] and $20) shl 2);
-          inc(i);
-          end;
-
-
-
-
-
+//!!        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Connecting to Propeller');
 
 //        XBee.ReceiveUDP(RxBuf, 0, 1000);
 
