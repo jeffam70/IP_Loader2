@@ -16,11 +16,11 @@ THINGS TO DO
   * Add check for DL (Destination IP) and set it to be host's IP.
 
 * Download Method
-  * Switch to compressed calibration pulse + handshake + download command + image size + loader image (single packet)
   * Loader Image
     * Full Propeller Application Written in Propeller Assembly
     * Host sets initial bit period value and target bit period value in loader image (before download) according to default/user-specified crystal speed
       * May need to be last values in image for implementation simplicity
+      * May need to set clock speed value LONG[0] and clock mode WORD[?]
     * Should support initial and target 9,600/19,200/38,400/57,600/115,200/230,400/460,800/921,600/1,000,000/1,500,000/2,000,000/3,000,000 baud rates
     * Handshake:
       * Uses standard bit encoding (instead of Propeller bit encoding)
@@ -80,6 +80,9 @@ THINGS DONE
 First Try:
   * Dropped UDP Packets
     * Retransmit a limited number of times
+
+* Download Method
+  * Switch to compressed calibration pulse + handshake + download command + image size + loader image (single packet)
 
 * Timing
   * Try making routine to sleep.
