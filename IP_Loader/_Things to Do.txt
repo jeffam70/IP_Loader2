@@ -26,14 +26,19 @@ THINGS TO DO
       * Host receives acknowledgement and switches to target baud rate
       * Host begins final image transmission
     * Final Image Transmission:
+      * Data is in units of 32-bits (longs)
       * Packetized; image data is encased in a packet wrapper
-        * Packet wrapper leads each packet with a 16-bit Packet ID and a 16-bit Packet Size
+        * Packet wrapper leads each packet with a 32-bit Packet Size and a 32-bit Packet ID
+          * Packet ID has dual purpose
+            * it uniquely identifies the packet; every unique packet in the stream has a unique ID (duplicate packets have the same ID)
+            * it indicates how many total packets are in (or left) in the Propeller Application Image
+              * Packet ID count's down to 1.  The host precalculates the total number of required packets as the value for the first packet's Packet ID.
+                Further packets use the previous Packet ID - 1.
         * Packet wrapper "may" end with a 32-bit CRC32 (if UDP doesn't dump corrupted packets)
-      * First packet's payload leads with an 8-bit download command (Program RAM or EEPROM) and a 24-bit application image size
       * Each loader-received packet is acknowledged (positively or negatively)
         * Host retransmits packets that are not acknowledged, or negatively acknowledged
         * Loader positively acknowledges duplicates, but dumps duplicate data
-        * Loader "may" negatively acknowlege packet and request previous packet (if UDP doens't dump corrupted packets; ie: a corrupted acknowledge from before)
+        * Loader "may" negatively acknowlege packet and request previous packet (if UDP does't dump corrupted packets; ie: a corrupted acknowledge from before)
           * Host retransmits requested packet if necessary
       * Loader acknowledges Application Image (positively or negatively); this is a RAM Checksum response
       * Loader acknowledges EEPROM write
