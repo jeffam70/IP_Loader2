@@ -472,6 +472,17 @@ const
                                          $EE,$CE,$CF,$CE,$CE,$CF,$CE,$EE,$EF,$EE,$EF,$EF,$CF,$EF,$CE,$CE,
                                          $EF,$CE,$EE,$CE,$EF,$CE,$CE,$EE,$CF,$CF,$CE,$CF,$CF);
 
+  LoaderSize = 12;
+
+  LoaderImage : array[0..114] of byte = ($92,$92,$92,$4A,$29,$CA,$52,$D2,$92,$52,$A5,$29,$D2,$D2,$92,$CA,
+                                         $92,$92,$92,$92,$52,$92,$92,$92,$92,$AA,$92,$92,$92,$92,$2A,$92,
+                                         $92,$92,$92,$D5,$92,$92,$92,$92,$92,$C9,$92,$92,$92,$C9,$92,$92,
+                                         $92,$92,$92,$C9,$92,$92,$92,$92,$92,$92,$92,$92,$52,$A9,$52,$92,
+                                         $92,$A9,$25,$2A,$A9,$52,$C9,$AA,$2A,$2A,$92,$D2,$AA,$C9,$D2,$4A,
+                                         $D5,$92,$29,$A9,$92,$92,$52,$95,$25,$92,$92,$92,$A5,$55,$D5,$D2,
+                                         $92,$49,$52,$AA,$25,$CA,$92,$C9,$92,$92,$AA,$D2,$52,$92,$92,$92,
+                                         $92,$92,$92);
+
 //  {The TxHandshake array consists of 250 bytes representing the bit 0 values (0 or 1) of each of 250 iterations of the LFSR (seeded with ASCII 'P') described above.}
 {  TxHandshake : array[1..250] of byte = (0,1,0,1,1,1,0,0,1,1,1,1,0,1,0,1,1,1,1,1,0,0,0,1,1,1,0,0,1,0,1,0,0,0,1,1,1,1,0,0,0,0,1,0,0,1,0,0,1,0,1,1,1,1,0,0,1,0,0,0,1,0,0,0,
                                          1,1,0,1,1,0,1,1,1,0,0,0,1,0,1,1,0,0,1,1,0,0,1,0,1,1,0,1,1,0,0,1,0,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1,0,1,0,1,1,0,1,0,0,1,1,1,1,1,
@@ -614,11 +625,12 @@ begin
 
     {Perform handshake and send Loader image; all as a single packet.  The Loader is a Propeller application to assist with the rest of the loading process
      in a faster way and with less interstitial timing constaints (more conducive to Internet Protocol (IP) transmissions).}
-    SetLength(TxBuf, Length(TxHandshake)+11+FBinSize*11);                                                      {Set initial packet size}
+    SetLength(TxBuf, Length(TxHandshake)+11+Length(LoaderImage));                                              {Set initial packet size}
     Move(TxHandshake, TxBuf[0], Length(TxHandshake));                                                          {Fill packet with handshake stream (timing template, handshake, and download command)}
     TxBuffLength := Length(TxHandshake);                                                                       {followed by Loader image's size}
-    AppendLong(FBinSize);
-    for i := 0 to FBinSize-1 do AppendLong(PIntegerArray(FBinImage)[i]);                                       {and the Loader image itself}
+    AppendLong(LoaderSize);
+    Move(LoaderImage, TxBuf[TxBuffLength], Length(LoaderImage));                                               {and the Loader image itself}
+//    for i := 0 to FBinSize-1 do AppendLong(PIntegerArray(FBinImage)[i]);                                       {and the Loader image itself}
     if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Connecting and Transmitting Loader Image');  {Send connect and Loader packet}
     { TODO : Revisit handshake receive loop to check for all possibilities and how they are handled. }
     repeat
