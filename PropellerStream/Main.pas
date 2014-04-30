@@ -187,7 +187,7 @@ begin
     {Download image to Propeller chip (use VBase (word 4) value as the 'image long-count size')}
 //    Propeller.Download(Buffer, PWordArray(Buffer)[4] div 4, DownloadCmd);
     GenerateStream(FBinImage, FBinSize, FStrmImage, FStrmSize);
-    GenerateDelphiCode(FBinImage, FBinSize, '//Raw Application Image');
+    GenerateDelphiCode(FBinImage, FBinSize*4, '//Raw Application Image');
     GenerateDelphiCode(FStrmImage, FStrmSize, '//Optimized Download Stream Image');
   except
     on E: EFileCorrupt do
