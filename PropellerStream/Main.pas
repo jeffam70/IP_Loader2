@@ -19,6 +19,7 @@ type
   private
     { Private declarations }
     procedure GenerateStream;
+    procedure GenerateDelphiCode;
   public
     { Public declarations }
   end;
@@ -182,6 +183,7 @@ begin
     {Download image to Propeller chip (use VBase (word 4) value as the 'image long-count size')}
 //    Propeller.Download(Buffer, PWordArray(Buffer)[4] div 4, DownloadCmd);
     GenerateStream;
+    GenerateDelphiCode;
   except
     on E: EFileCorrupt do
       begin {Image corrupt, show error and exit}
@@ -208,9 +210,6 @@ var
   BValue : Byte;     {Binary Value to translate}
   BitsIn : Byte;     {Number of bits ready for translation}
   BCount : Integer;  {Total number of bits translated}
-  Str    : String;   {Temporary String}
-  HLen   : Integer;  {Length of header (for string creation)}
-  BIdx   : Integer;  {Byte index (for string creation)}
 const
   dtTx = 0;          {Data type: Translation pattern}
   dtBits = 1;        {Date type: Bits translated}
@@ -272,22 +271,39 @@ begin
       inc(FStrmSize);                                                                      {  Increment byte index}
       inc(BCount, PDSTx[BValue, BitsIn, dtBits]);                                          {  Increment bit index (usually 3, 4, or 5 bits, but can be 1 or 2 at end of stream)}
     end;
+end;
 
-  StreamMemo.Lines.Add('  LoaderSize = ' + inttostr(FBinSize) + ';');
-  StreamMemo.Lines.Add('');
-  Str := '  LoaderImage : array[0..' + inttostr(FStrmSize-1) + '] of byte = (';
-  HLen := Length(Str);
-  for BIdx := 0 to FStrmSize-1 do
-    begin
-    if (BIdx > 0) and (BIdx mod 16 = 0) then
+procedure TPropellerStreamForm.GenerateDelphiCode;
+var
+  StrList : TStringList;
+  Str     : String;   {Temporary String}
+  HLen    : Integer;  {Length of header (for string creation)}
+  BIdx    : Integer;  {Byte index (for string creation)}
+begin
+  {Generate Delphi code}
+  StrList := TStringList.Create;
+  try
+    StrList.Add('  LoaderSize = ' + inttostr(FBinSize) + ';');
+    StrList.Add('');
+    Str := '  LoaderImage : array[0..' + inttostr(FStrmSize-1) + '] of byte = (';
+    HLen := Length(Str);
+    for BIdx := 0 to FStrmSize-1 do
       begin
-      StreamMemo.Lines.Add(Str);
-      Str := system.StringOfChar(' ', HLen);
+      if (BIdx > 0) and (BIdx mod 16 = 0) then
+        begin
+        StrList.Add(Str);
+        Str := system.StringOfChar(' ', HLen);
+        end;
+      Str := Str + '$' + inttohex(FStrmImage[BIdx],2) + ifthen(BIdx < FStrmSize-1, ',', '');
       end;
-    Str := Str + '$' + inttohex(FStrmImage[BIdx],2) + ifthen(BIdx < FStrmSize-1, ',', '');
-    end;
-  Str := Str + ');';
-  StreamMemo.Lines.Add(Str);
+    Str := Str + ');';
+    StrList.Add(Str);
+    StreamMemo.Text := StrList.Text;
+  finally
+    StrList.Free;
+  end;
+
+
 end;
 
 {--------------------------------------------------------------------------------}
