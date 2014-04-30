@@ -4,22 +4,26 @@ interface
 
 uses
   System.SysUtils, System.Types, System.UITypes, System.Classes, System.Variants, System.StrUtils, System.Math,
-  FMX.Types, FMX.Graphics, FMX.Controls, FMX.Forms, FMX.Dialogs, FMX.StdCtrls, FMX.Layouts, FMX.Memo;
+  FMX.Types, FMX.Graphics, FMX.Controls, FMX.Forms, FMX.Dialogs, FMX.StdCtrls, FMX.Layouts, FMX.Memo, FMX.Edit;
 
 type
   TPropellerStreamForm = class(TForm)
     OpenDialog: TOpenDialog;
-    GenerateButton: TButton;
+    LoadPropellerAppButton: TButton;
     SaveDialog: TSaveDialog;
-    Label1: TLabel;
+    Description: TLabel;
     StreamMemo: TMemo;
-    ButtonLayout: TLayout;
+    ButtonBarLayout: TLayout;
     MemoLayout: TLayout;
-    procedure GenerateButtonClick(Sender: TObject);
+    DescriptionLabel: TLayout;
+    AppNameEdit: TEdit;
+    AppNameLabel: TLabel;
+    ButtonLayout: TLayout;
+    procedure LoadPropellerAppButtonClick(Sender: TObject);
   private
     { Private declarations }
     procedure GenerateStream;
-    procedure GenerateDelphiCode;
+    procedure GenerateDelphiCode(Image: PByteArray; Size: Integer; Header: String);
   public
     { Public declarations }
   end;
@@ -43,7 +47,7 @@ implementation
 
 {$R *.fmx}
 
-procedure TPropellerStreamForm.GenerateButtonClick(Sender: TObject);
+procedure TPropellerStreamForm.LoadPropellerAppButtonClick(Sender: TObject);
 var
   FStream     : TFileStream;
   ImageSize   : Integer;
@@ -183,7 +187,8 @@ begin
     {Download image to Propeller chip (use VBase (word 4) value as the 'image long-count size')}
 //    Propeller.Download(Buffer, PWordArray(Buffer)[4] div 4, DownloadCmd);
     GenerateStream;
-    GenerateDelphiCode;
+    GenerateDelphiCode(FBinImage, FBinSize, '//Raw Application Image');
+    GenerateDelphiCode(FStrmImage, FStrmSize, '//Optimized Download Stream Image');
   except
     on E: EFileCorrupt do
       begin {Image corrupt, show error and exit}
@@ -206,6 +211,10 @@ end;
 {--------------------------------------------------------------------------------}
 
 procedure TPropellerStreamForm.GenerateStream;
+{Take Propeller Application image and generate Propeller Download stream in an optimized format (3, 4, or 5 bits per byte; 7 to 11 bytes per long).
+ Note: for every 5 contiguous bits in Propeller Application Image (LSB first) 3, 4, or 5 bits can be translated to a byte.  The process requires
+ 5 bits input (ie: indexed into the array) and gets a byte out that contains the first 3, 4, or 5 bits encoded in the Propeller Download stream format.
+ If less than 5 bits were translated, the remaining bits leads the next 5 bit translation unit input to the translation process.}
 var
   BValue : Byte;     {Binary Value to translate}
   BitsIn : Byte;     {Number of bits ready for translation}
@@ -273,7 +282,9 @@ begin
     end;
 end;
 
-procedure TPropellerStreamForm.GenerateDelphiCode;
+{--------------------------------------------------------------------------------}
+
+procedure TPropellerStreamForm.GenerateDelphiCode(Image: PByteArray; Size: Integer; Header: String);
 var
   StrList : TStringList;
   Str     : String;   {Temporary String}
@@ -282,28 +293,31 @@ var
 begin
   {Generate Delphi code}
   StrList := TStringList.Create;
+  StrList.Text := StreamMemo.Text;
   try
-    StrList.Add('  LoaderSize = ' + inttostr(FBinSize) + ';');
+    StrList.Add(Header);
     StrList.Add('');
-    Str := '  LoaderImage : array[0..' + inttostr(FStrmSize-1) + '] of byte = (';
+    StrList.Add('  ' + AppNameEdit.Text + 'Size = ' + inttostr(Size) + ';');
+    StrList.Add('');
+    Str := '  ' + AppNameEdit.Text + 'Image : array[0..' + inttostr(Size-1) + '] of byte = (';
     HLen := Length(Str);
-    for BIdx := 0 to FStrmSize-1 do
+    for BIdx := 0 to Size-1 do
       begin
       if (BIdx > 0) and (BIdx mod 16 = 0) then
         begin
         StrList.Add(Str);
-        Str := system.StringOfChar(' ', HLen);
+        Str := System.StringOfChar(' ', HLen);
         end;
-      Str := Str + '$' + inttohex(FStrmImage[BIdx],2) + ifthen(BIdx < FStrmSize-1, ',', '');
+      Str := Str + '$' + inttohex(Image[BIdx],2) + ifthen(BIdx < Size-1, ',', '');
       end;
     Str := Str + ');';
     StrList.Add(Str);
+    StrList.Add('');
+    StrList.Add('');
     StreamMemo.Text := StrList.Text;
   finally
     StrList.Free;
   end;
-
-
 end;
 
 {--------------------------------------------------------------------------------}
