@@ -9,11 +9,6 @@ THINGS TO DO
   * TCP connection
   * Propeller Protocol
   * Prompts
-  * Dropped UDP Packets
-    * Retransmit a limited number of times
-
-* Command
-  * Add check for DL (Destination IP) and set it to be host's IP.
 
 * Download Method
   * Loader Image
@@ -53,9 +48,6 @@ THINGS TO DO
     * This may be simpler with a single command, if there is one.
   * Could use I/O pin to instantiate flow control for a certain amount of time during reset,
     this way we can time serial output's start in relation to reset better.
-  * Could stick to UDP for data because it's less overhead and timing in relation to reset is easer.
-
-  * Why are we not able to set the IP or AP parameters?  There's no response, and then the XBee seems to lock up.
 
   * Figure out how to deal with late packet arrival.  Sometimes during Identify, the packets arrive later than the timeout.  Also, during programming, the UDP
     response is not seen right away.
@@ -80,8 +72,11 @@ THINGS DONE
 * All UDP methods use the Application UDP Client except the SendUDP (when told not to) and the ReceiveUDP methods.
 * Appliation UDP Client is bound to $BEE.
 * Calculate round-trip time
+* Could stick to UDP for data because it's less overhead and timing in relation to reset is easer.
+* Why are we not able to set the IP or AP parameters?  There's no response, and then the XBee seems to lock up.
+  * Determined this is because of a firmware bug.
 
-First Try:
+* First Try:
   * Dropped UDP Packets
     * Retransmit a limited number of times
 
@@ -112,12 +107,15 @@ First Try:
     * This feature is static, it does not change according to the number of bytes in the XBee's UART
   * to get IP Mask
   * to get IP Gateway
+  * Add check for DL (Destination IP) and set it to be host's IP.
 
 * Simplify CmdStream
 
 * Handle errors
   * Invalid IP Address (255.255.255.255)
   * No acknowledgement
+  * Dropped UDP Packets
+    * Retransmit a limited number of times
 
 * Handle
   * String issues in ParameterValue

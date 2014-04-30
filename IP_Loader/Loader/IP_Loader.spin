@@ -121,23 +121,25 @@ DAT
 '*       Constants and Variables       *
 '***************************************
 
+{Initialized Variables}
+  Longs       long      0                                                       'Long counter
+  MainRAMAddr long      0                                                       'Address in Main RAM
+
 {Constants}
   Restart     long      %1000_0000                                              'Reboot value (for CLK register)
   IncDest     long      %1_0_00000000                                           'Value to increment a register's destination field
   RxPin       long      |< 31                                                   'Receive pin mask (P31)
   TxPin       long      |< 30                                                   'Transmit pin mask (P30)
+  
+{Host Initialized Values}
   BitTime                                                                       'Bit period (in clock cycles)
    IBitTime   long      80_000_000 / 115_200                     '[host init]      Initial bit period (at startup)
    FBitTime   long      80_000_000 / 230_400                     '[host init]      Final bit period (for download)
   BitTime1_5  long      TRUNC(1.5 * 80_000_000.0 / 230_400.0)    '[host init]    1.5x bit period; used to align to center of received bits
   Timeout     long      80_000_000 * 4 / (2*8)                   '[host init]    Timeout period (2 seconds worth of RxByte loop iterations)
-
-{Variables (initialized)}
   ExpectedID  long      0                                        '[host init]    Expected Packet ID
-  Longs       long      0                                                       'Long counter
-  MainRAMAddr long      0                                                       'Address in Main RAM
 
-{Variables}
+{Reserved Variables}
   TimeDelay   res       1                                                       'Timout delay
   BitDelay    res       1                                                       'Bit time delay
   SByte       res       1                                                       'Byte to transmit, or byte received
