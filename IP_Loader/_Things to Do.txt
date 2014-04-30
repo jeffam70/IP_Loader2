@@ -34,7 +34,8 @@ THINGS TO DO
             * it indicates how many total packets are in (or left) in the Propeller Application Image
               * Packet ID count's down to 1.  The host precalculates the total number of required packets as the value for the first packet's Packet ID.
                 Further packets use the previous Packet ID - 1.
-        * Packet wrapper "may" end with a 32-bit CRC32 (if UDP doesn't dump corrupted packets)
+        * Verify that UDP dumps corrupted packets
+          * Packet wrapper "may" end with a 32-bit CRC32 (if UDP doesn't dump corrupted packets)
       * Each loader-received packet is acknowledged (positively or negatively)
         * Host retransmits packets that are not acknowledged, or negatively acknowledged
         * Loader positively acknowledges duplicates, but dumps duplicate data

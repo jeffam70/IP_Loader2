@@ -11,6 +11,8 @@ CON
         _clkmode = xtal1 + pll16x                                               'Standard clock mode * crystal frequency = 80 MHz
         _xinfreq = 5_000_000
 
+MaxPacketPayload = 1392                                                         'Maximum size of packet payload (in bytes)
+
 PUB Main
 
   waitcnt(clkfreq + cnt)
@@ -69,21 +71,6 @@ DAT
                         {Receive Run command here}
                         
                         jmp     #$
-
-{                       rol     Packet, #8
-                        mov     SByte, Packet
-                        call    #Transmit
-                        rol     Packet, #8
-                        mov     SByte, Packet
-                        call    #Transmit
-                        rol     Packet, #8
-                        mov     SByte, Packet
-                        call    #Transmit
-                        rol     Packet, #8
-                        mov     SByte, Packet
-                        call    #Transmit
-                        jmp     #$
-}
                        
 {***************************************
  *             Subroutines             *
@@ -110,7 +97,7 @@ DAT
 {Receive byte from host.
  Requirements:  Timeout value dictates maximum wait for byte.
  Results:       Received byte will be placed into SByte.
-                Propeller reset if no byte received within timeout.}
+                Propeller will reset if no byte received within timeout.}
                 
   Receive               mov     TimeDelay, Timeout                              'Reset timeout delay
                         mov     BitDelay, BitTime1_5                            'Prep for first bit sample
@@ -135,7 +122,7 @@ DAT
 '***************************************
 
 {Constants}
-  Restart     long      %10000000                                               'Reboot value (for CLK register)
+  Restart     long      %1000_0000                                              'Reboot value (for CLK register)
   IncDest     long      %1_0_00000000                                           'Value to increment a register's destination field
   RxPin       long      |< 31                                                   'Receive pin mask (P31)
   TxPin       long      |< 30                                                   'Transmit pin mask (P30)
@@ -160,7 +147,7 @@ DAT
   Packet                                                                        'Packet buffer
    PacketSize res       1                                                       '  Header:  Packet Size
    PacketID   res       1                                                       '  Header:  Packet ID number
-   PacketData res       1                                                       '  Payload: Packet data (longs); must be last, extends to end of Cog RAM
+   PacketData res       (MaxPacketPayload / 4) - 2                              '  Payload: Packet data (longs); (max size in longs) - header
 
 
 ' CalcBitTime           mov     BitTime1_5, BitTime                             'Calculate 1.5x bit time (BitTime * 3 / 2)
@@ -168,5 +155,21 @@ DAT
 '                       add     BitTime1_5, BitTime
 '                       shr     BitTime1_5, #1
 
+{                       rol     Packet, #8
+                        mov     SByte, Packet
+                        call    #Transmit
+                        rol     Packet, #8
+                        mov     SByte, Packet
+                        call    #Transmit
+                        rol     Packet, #8
+                        mov     SByte, Packet
+                        call    #Transmit
+                        rol     Packet, #8
+                        mov     SByte, Packet
+                        call    #Transmit
+                        jmp     #$
+}
+
 
 'Possibly adjust BitTime1_5 by sample loop time to true it up
+'Possibly remove Longs (or MainRAMAddr) and substitute MainRAMAddr (or Longs) in it's place

@@ -21,7 +21,7 @@ uses
 type
   {Define XBee WiFi's udp commands}
   {IMPORTANT: Do not rearrange, append, or delete from this list without similarly modifying the ATCmd constant array}
-  xbCommand = (xbData, xbMacHigh, xbMacLow, xbSSID, xbIPAddr, xbIPMask, xbIPGateway, xbIPPort, xbNodeID, xbMaxRFPayload, xbIO2State,
+  xbCommand = (xbData, xbMacHigh, xbMacLow, xbSSID, xbIPAddr, xbIPMask, xbIPGateway, xbIPPort, xbIPDestination, xbNodeID, xbMaxRFPayload, xbIO2State,
                xbOutputMask, xbOutputState, xbIO2Timer, xbSerialMode, xbSerialBaud, xbSerialParity, xbSerialStopBits, xbSerialIP, xbChecksum);
 
 const
@@ -32,10 +32,11 @@ const
     {xbMacHigh}         Byte('S') + Byte('H') shl 8,  {[Rb] XBee's Mac Address (highest 16-bits)}
     {xbMacLow}          Byte('S') + Byte('L') shl 8,  {[Rb] XBee's Mac Address (lowest 32-bits)}
     {xbSSID}            Byte('I') + Byte('D') shl 8,  {[Rs/Ws] SSID (0 to 31 printable ASCII characters)}
-    {xbIPAddr}          Byte('M') + Byte('Y') shl 8,  {[Rb*/Wsb] XBee's IP Address (32-bits); *Read-only in DHCP mode}
+    {xbIPAddr}          Byte('M') + Byte('Y') shl 8,  {[Rb*/Wsb] XBee's IP Address (32-bits; IPv4); *Read-only in DHCP mode}
     {xbIPMask}          Byte('M') + Byte('K') shl 8,  {[Rb*/Wsb] XBee's IP Mask (32-bits); *Read-only in DHCP mode}
     {xbIPGateway}       Byte('G') + Byte('W') shl 8,  {[Rb*/Wsb] XBee's IP Gateway (32-bits); *Read-only in DHCP mode}
     {xbIPPort}          Byte('C') + Byte('0') shl 8,  {[Rb/Wb] Xbee's UDP/IP Port (16-bits)}
+    {xbIPDestination}   Byte('D') + Byte('L') shl 8,  {[Rb/Wsb] Xbee's serial-to-IP destination address (32-bits; IPv4)}
     {xbNodeID}          Byte('N') + Byte('I') shl 8,  {[Rs/Ws] Friendly node identifier string (20 printable ASCII characters)}
     {xbMaxRFPayload}    Byte('N') + Byte('P') shl 8,  {[Rb] Maximum RF Payload (16-bits; in bytes)}
     {xbIO2State}        Byte('D') + Byte('2') shl 8,  {[Rb/Wb] Designated reset pin (3-bits; 0=Disabled, 1=SPI_CLK, 2=Analog input, 3=Digital input, 4=Digital output, 5=Digital output)}
@@ -50,8 +51,8 @@ const
     {xbChecksum}        Byte('C') + Byte('K') shl 8   {[Rb] current configuration checksum (16-bits)}
     );
 
-  {Set of XBee Commands that take string parameters (instead of numeric parameters)}
-  xbStrCommands : set of xbCommand = [xbNodeID];
+  {Set of XBee Commands that take string parameters only (instead of numeric parameters)}
+  xbStrCommands : set of xbCommand = [xbSSID, xbNodeID];
 
 type
   {Define Parameter Value}
@@ -158,7 +159,7 @@ type
   private
     { Private declarations }
     {XBee Application Service buffer transmit methods}
-    procedure PrepareAppBuffer(Command: xbCommand; ParamStr: String = ''; ParamNum: Integer = -1; ParamData: TIdBytes = nil);
+    procedure PrepareAppBuffer(Command: xbCommand; ParamStr: String = ''; ParamNum: Int64 = -1; ParamData: TIdBytes = nil);
     function  TransmitAppUDP(ExpectMultiple: Boolean = False): Boolean;
     procedure Pause(Duration: Integer);
   end;
@@ -620,7 +621,7 @@ end;
 {----------------------------------------------------------------------------------------------------}
 {----------------------------------------------------------------------------------------------------}
 
-procedure TXBeeWiFi.PrepareAppBuffer(Command: xbCommand; ParamStr: String = ''; ParamNum: Integer = -1; ParamData: TIdBytes = nil);
+procedure TXBeeWiFi.PrepareAppBuffer(Command: xbCommand; ParamStr: String = ''; ParamNum: Int64 = -1; ParamData: TIdBytes = nil);
 {Resize and fill TxBuf (pointed to by PTxBuf) with Command and Parameter (Str, Num, or Data).}
 var
   ParamLength : Cardinal;

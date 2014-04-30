@@ -5,7 +5,8 @@ interface
 uses
   System.SysUtils, System.StrUtils, System.Types, System.UITypes, System.Classes, System.Variants, System.Math,
   FMX.Types, FMX.Graphics, FMX.Controls, FMX.Forms, FMX.Dialogs, FMX.StdCtrls, FMX.Edit, FMX.ListBox,
-  XBeeWiFi, IdGlobal, IdBaseComponent, IdComponent, IdRawBase, IdRawClient, IdIcmpClient;
+  XBeeWiFi,
+  IdGlobal, IdBaseComponent, IdComponent, IdRawBase, IdRawClient, IdIcmpClient, IdStack;
 
 type
   {Define XBee Info record}
@@ -105,10 +106,12 @@ end;
 
 procedure TForm1.Button1Click(Sender: TObject);
 //var
+//  Idx : Integer;
 //  IP : TIDStack;
 begin
+//  for Idx := 0 to GStack.LocalAddresses.Count-1 do showmessage(GStack.LocalAddresses[Idx]);
   XBee.SetItem(xbIO2State, pinOutHigh);
-  caption := inttostr(XBee.UDPRoundTrip);
+//  caption := inttostr(XBee.UDPRoundTrip);
 //  IP := TIDStack.Create;
 //  IP.NewInstance;
 //  IPAddr.Text := IP.LocalAddress;
@@ -387,11 +390,12 @@ begin
             (Validate(xbChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum, True));
   if not Result then                                                                         {  If not...}
     begin
-    Validate(xbSerialIP, SerialUDP, False);                                                  {    Ensure XBee's Serial Service uses UDP packets}
+    Validate(xbSerialIP, SerialUDP, False);                                                  {    Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
+    Validate(xbIPDestination, $C0A80188);                                                    {    Ensure Serial-to-IP destination is us (our IP)}
     Validate(xbIO2State, pinOutHigh);                                                        {    Ensure I/O is set to output high}
     Validate(xbOutputMask, $7FFF);                                                           {    Ensure output mask is proper (default, in this case)}
     Validate(xbIO2Timer, 1);                                                                 {    Ensure DIO2's timer is set to 100 ms}
-    Validate(xbSerialMode, TransparentMode {APIwoEscapeMode} {APIwEscapeMode});              {    Ensure Serial Mode is transparent}
+    Validate(xbSerialMode, TransparentMode {APIwoEscapeMode} {APIwEscapeMode}, False);       {    Ensure Serial Mode is transparent [WRITE DISABLED DUE TO FIRMWARE BUG]}
     Validate(xbSerialBaud, Baud115200);                                                      {    Ensure baud rate is 115,200 bps}
     Validate(xbSerialParity, ParityNone);                                                    {    Ensure parity is none}
     Validate(xbSerialStopBits, StopBits1);                                                   {    Ensure stop bits is 1}
@@ -472,15 +476,21 @@ const
                                          $EE,$CE,$CF,$CE,$CE,$CF,$CE,$EE,$EF,$EE,$EF,$EF,$CF,$EF,$CE,$CE,
                                          $EF,$CE,$EE,$CE,$EF,$CE,$CE,$EE,$CF,$CF,$CE,$CF,$CF);
 
-  LoaderSize = 12;
+  LoaderSize = 23;
 
-  LoaderImage : array[0..114] of byte = ($92,$92,$92,$4A,$29,$CA,$52,$D2,$92,$52,$A5,$29,$D2,$D2,$92,$CA,
-                                         $92,$92,$92,$92,$52,$92,$92,$92,$92,$AA,$92,$92,$92,$92,$2A,$92,
-                                         $92,$92,$92,$D5,$92,$92,$92,$92,$92,$C9,$92,$92,$92,$C9,$92,$92,
-                                         $92,$92,$92,$C9,$92,$92,$92,$92,$92,$92,$92,$92,$52,$A9,$52,$92,
-                                         $92,$A9,$25,$2A,$A9,$52,$C9,$AA,$2A,$2A,$92,$D2,$AA,$C9,$D2,$4A,
-                                         $D5,$92,$29,$A9,$92,$92,$52,$95,$25,$92,$92,$92,$A5,$55,$D5,$D2,
-                                         $92,$49,$52,$AA,$25,$CA,$92,$C9,$92,$92,$AA,$D2,$52,$92,$92,$92,
+  LoaderImage : array[0..210] of byte = ($92,$92,$92,$4A,$29,$CA,$52,$D2,$92,$52,$A5,$49,$25,$25,$D2,$92,
+                                         $92,$92,$92,$AA,$CA,$92,$92,$92,$CA,$2A,$92,$92,$92,$52,$92,$92,
+                                         $92,$92,$D2,$2A,$92,$92,$92,$2A,$CA,$92,$92,$92,$C9,$92,$92,$92,
+                                         $92,$92,$C9,$92,$92,$92,$92,$92,$92,$92,$92,$92,$52,$49,$49,$92,
+                                         $95,$25,$25,$92,$52,$95,$52,$4A,$49,$25,$AA,$2A,$2A,$92,$D2,$AA,
+                                         $C9,$D2,$4A,$D5,$92,$29,$A9,$92,$92,$52,$95,$25,$CA,$92,$92,$A5,
+                                         $55,$D5,$D2,$92,$49,$52,$AA,$25,$CA,$92,$AA,$D2,$92,$C9,$4A,$95,
+                                         $92,$29,$55,$92,$29,$A9,$92,$92,$52,$95,$25,$CA,$92,$92,$A5,$55,
+                                         $D5,$D2,$92,$49,$52,$AA,$25,$CA,$92,$AA,$92,$49,$92,$A9,$25,$D2,
+                                         $4A,$D5,$92,$29,$A9,$92,$92,$52,$95,$25,$CA,$92,$92,$A5,$55,$D5,
+                                         $D2,$92,$49,$52,$AA,$25,$CA,$92,$AA,$52,$D2,$92,$A9,$25,$D2,$4A,
+                                         $D5,$92,$29,$A9,$92,$92,$52,$95,$25,$CA,$92,$92,$A5,$55,$D5,$D2,
+                                         $92,$49,$52,$AA,$25,$CA,$92,$C9,$92,$2A,$D2,$D2,$52,$92,$92,$92,
                                          $92,$92,$92);
 
 //  {The TxHandshake array consists of 250 bytes representing the bit 0 values (0 or 1) of each of 250 iterations of the LFSR (seeded with ASCII 'P') described above.}
