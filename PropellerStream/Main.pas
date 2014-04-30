@@ -23,7 +23,7 @@ type
   private
     { Private declarations }
     procedure GenerateStream(InImage: PByteArray; InSize: Integer; OutImage: PByteArray; var OutSize: Integer);
-    procedure GenerateDelphiCode(Image: PByteArray; Size: Integer; Header: String);
+    procedure GenerateDelphiCode(Image: PByteArray; AppSizeLongs, ImageSizeBytes: Integer; Header: String);
   public
     { Public declarations }
   end;
@@ -187,8 +187,8 @@ begin
     {Download image to Propeller chip (use VBase (word 4) value as the 'image long-count size')}
 //    Propeller.Download(Buffer, PWordArray(Buffer)[4] div 4, DownloadCmd);
     GenerateStream(FBinImage, FBinSize, FStrmImage, FStrmSize);
-    GenerateDelphiCode(FBinImage, FBinSize*4, '//Raw Application Image');
-    GenerateDelphiCode(FStrmImage, FStrmSize, '//Optimized Download Stream Image');
+    GenerateDelphiCode(FBinImage, FBinSize, FBinSize*4, '//Raw Application Image');
+    GenerateDelphiCode(FStrmImage, FBinSize, FStrmSize, '//Optimized Download Stream Image');
   except
     on E: EFileCorrupt do
       begin {Image corrupt, show error and exit}
@@ -284,7 +284,7 @@ end;
 
 {--------------------------------------------------------------------------------}
 
-procedure TPropellerStreamForm.GenerateDelphiCode(Image: PByteArray; Size: Integer; Header: String);
+procedure TPropellerStreamForm.GenerateDelphiCode(Image: PByteArray; AppSizeLongs, ImageSizeBytes: Integer; Header: String);
 var
   StrList : TStringList;
   Str     : String;   {Temporary String}
@@ -297,18 +297,17 @@ begin
   try
     StrList.Add(Header);
     StrList.Add('');
-    StrList.Add('  ' + AppNameEdit.Text + 'Size = ' + inttostr(Size) + ';');
-    StrList.Add('');
-    Str := '  ' + AppNameEdit.Text + 'Image : array[0..' + inttostr(Size-1) + '] of byte = (';
+    StrList.Add('  ' + AppNameEdit.Text + 'AppSize = ' + inttostr(AppSizeLongs) + ';');
+    Str := '  ' + AppNameEdit.Text + 'Image : array[0..' + inttostr(ImageSizeBytes-1) + '] of byte = (';
     HLen := Length(Str);
-    for BIdx := 0 to Size-1 do
+    for BIdx := 0 to ImageSizeBytes-1 do
       begin
       if (BIdx > 0) and (BIdx mod 16 = 0) then
         begin
         StrList.Add(Str);
         Str := System.StringOfChar(' ', HLen);
         end;
-      Str := Str + '$' + inttohex(Image[BIdx],2) + ifthen(BIdx < Size-1, ',', '');
+      Str := Str + '$' + inttohex(Image[BIdx],2) + ifthen(BIdx < ImageSizeBytes-1, ',', '');
       end;
     Str := Str + ');';
     StrList.Add(Str);
