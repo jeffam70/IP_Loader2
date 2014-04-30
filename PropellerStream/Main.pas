@@ -22,7 +22,7 @@ type
     procedure LoadPropellerAppButtonClick(Sender: TObject);
   private
     { Private declarations }
-    procedure GenerateStream;
+    procedure GenerateStream(InImage: PByteArray; InSize: Integer; OutImage: PByteArray; var OutSize: Integer);
     procedure GenerateDelphiCode(Image: PByteArray; Size: Integer; Header: String);
   public
     { Public declarations }
@@ -186,7 +186,7 @@ begin
     FBinSize := ImageSize div 4;
     {Download image to Propeller chip (use VBase (word 4) value as the 'image long-count size')}
 //    Propeller.Download(Buffer, PWordArray(Buffer)[4] div 4, DownloadCmd);
-    GenerateStream;
+    GenerateStream(FBinImage, FBinSize, FStrmImage, FStrmSize);
     GenerateDelphiCode(FBinImage, FBinSize, '//Raw Application Image');
     GenerateDelphiCode(FStrmImage, FStrmSize, '//Optimized Download Stream Image');
   except
@@ -210,11 +210,11 @@ end;
 
 {--------------------------------------------------------------------------------}
 
-procedure TPropellerStreamForm.GenerateStream;
-{Take Propeller Application image and generate Propeller Download stream in an optimized format (3, 4, or 5 bits per byte; 7 to 11 bytes per long).
- Note: for every 5 contiguous bits in Propeller Application Image (LSB first) 3, 4, or 5 bits can be translated to a byte.  The process requires
- 5 bits input (ie: indexed into the array) and gets a byte out that contains the first 3, 4, or 5 bits encoded in the Propeller Download stream format.
- If less than 5 bits were translated, the remaining bits leads the next 5 bit translation unit input to the translation process.}
+procedure TPropellerStreamForm.GenerateStream(InImage: PByteArray; InSize: Integer; OutImage: PByteArray; var OutSize: Integer);
+{Take Propeller Application image (InImage) and generate Propeller Download stream (OutImage) in an optimized format (3, 4, or 5 bits per byte; 7 to 11
+ bytes per long).  Note: for every 5 contiguous bits in Propeller Application Image (LSB first) 3, 4, or 5 bits can be translated to a byte.  The process
+ requires 5 bits input (ie: indexed into the array) and gets a byte out that contains the first 3, 4, or 5 bits encoded in the Propeller Download stream
+ format. If less than 5 bits were translated, the remaining bits leads the next 5 bit translation unit input to the translation process.}
 var
   BValue : Byte;     {Binary Value to translate}
   BitsIn : Byte;     {Number of bits ready for translation}
@@ -270,14 +270,14 @@ const
           );
 begin
   BCount := 0;
-  FStrmSize := 0;
-  while BCount < (FBinSize*4) * 8 do                                                       {For all bits in data stream...}
+  OutSize := 0;
+  while BCount < (InSize*4) * 8 do                                                         {For all bits in data stream...}
     begin
-      BitsIn := Min(5, (FBinSize*4) * 8 - BCount);                                         {  Determine number of bits in current unit to translate; usually 5 bits}
-      BValue := ( (FBinImage[BCount div 8] shr (BCount mod 8)) +                           {  Extract next translation unit (contiguous bits, LSB first; usually 5 bits)}
-        (FBinImage[(BCount div 8) + 1] shl (8 - (BCount mod 8))) ) and Pwr2m1[BitsIn];
-      FStrmImage[FStrmSize] := PDSTx[BValue, BitsIn, dtTx];                                {  Translate unit to encoded byte}
-      inc(FStrmSize);                                                                      {  Increment byte index}
+      BitsIn := Min(5, (InSize*4) * 8 - BCount);                                           {  Determine number of bits in current unit to translate; usually 5 bits}
+      BValue := ( (InImage[BCount div 8] shr (BCount mod 8)) +                             {  Extract next translation unit (contiguous bits, LSB first; usually 5 bits)}
+        (InImage[(BCount div 8) + 1] shl (8 - (BCount mod 8))) ) and Pwr2m1[BitsIn];
+      OutImage[OutSize] := PDSTx[BValue, BitsIn, dtTx];                                    {  Translate unit to encoded byte}
+      inc(OutSize);                                                                        {  Increment byte index}
       inc(BCount, PDSTx[BValue, BitsIn, dtBits]);                                          {  Increment bit index (usually 3, 4, or 5 bits, but can be 1 or 2 at end of stream)}
     end;
 end;
