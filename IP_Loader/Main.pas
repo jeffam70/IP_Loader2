@@ -183,7 +183,6 @@ var
 
   Checksum         : Byte;
   LoaderImage      : PByteArray;                         {Adjusted Loader Memory image}
-  LoaderSize       : Integer;                            {Size of RawLoaderImage (and LoaderImage)}
   LoaderStream     : PByteArray;                         {Loader Download Stream (Generated from Loader Image)}
   LoaderStreamSize : Integer;                            {Size of Loader Download Stream}
 
@@ -247,9 +246,10 @@ const
   it assists with the remainder of the download (at a faster speed and with more relaxed interstitial timing conducive of Internet Protocol delivery.
   This memory image isn't used as-is; before download, it is first adjusted to contain special values assigned by this host (communication timing and
   synchronization values) and then is translated into an optimized Propeller Download Stream understandable by the Propeller ROM-based boot loader.}
-  RawLoaderImage : array[0..299] of byte = ($00,$B4,$C4,$04,$6F,$19,$10,$00,$2C,$01,$34,$01,$20,$01,$38,$01,
+  RawLoaderAppSize = 75;
+  RawLoaderImage : array[0..299] of byte = ($00,$B4,$C4,$04,$6F,$D9,$10,$00,$2C,$01,$34,$01,$20,$01,$38,$01,
                                             $1C,$01,$02,$00,$10,$01,$00,$00,$3C,$E8,$BF,$A0,$3C,$EC,$BF,$A0,
-                                            $15,$00,$3C,$5C,$48,$8E,$FC,$A0,$47,$10,$BC,$54,$47,$12,$BC,$54,
+                                            $15,$00,$7C,$5C,$48,$8E,$FC,$A0,$47,$10,$BC,$54,$47,$12,$BC,$54,
                                             $04,$8C,$FC,$A0,$27,$6C,$FC,$5C,$44,$90,$BC,$68,$08,$90,$FC,$20,
                                             $07,$8C,$FC,$E4,$01,$8E,$FC,$80,$01,$6E,$FC,$80,$04,$90,$FC,$E4,
                                             $41,$92,$3C,$86,$01,$82,$E8,$84,$38,$94,$28,$08,$04,$70,$E8,$80,
@@ -414,34 +414,31 @@ begin
   FRxBuffEnd := 0;
 
   {Prepare Loader Image}
-  LoaderSize := Length(RawLoaderImage);
-  getmem(LoaderImage, LoaderSize+Length(InitCallFrame)+1);                                          {Reserve LoaderImage space for RawLoaderImage data plus initial call frame plus 1 extra byte to accommodate generation routine}
+  getmem(LoaderImage, RawLoaderAppSize*4+1);                                                        {Reserve LoaderImage space for RawLoaderImage data plus 1 extra byte to accommodate generation routine}
   getmem(LoaderStream, ImageLimit div 4 * 11);                                                      {Reserve LoaderStream space for maximum-sized download stream}
   try
-    Move(RawLoaderImage, LoaderImage[0], LoaderSize);
+    Move(RawLoaderImage, LoaderImage[0], RawLoaderAppSize*4);                                       {Copy raw loader image to LoaderImage (for adjustments and processing)}
     {Clear checksum}
     LoaderImage[5] := 0;
     {Set host-initialized values}
-    SetHostInitializedValue(LoaderSize+RawLoaderInitOffset, 80000000 div 115200);                   {Initial Bit Time}
-    SetHostInitializedValue(LoaderSize+RawLoaderInitOffset + 4, 80000000 div 230400);               {Final Bit Time}
-    SetHostInitializedValue(LoaderSize+RawLoaderInitOffset + 8, trunc(1.5 * 80000000) div 230400);  {1.5x Final Bit Time}
-    SetHostInitializedValue(LoaderSize+RawLoaderInitOffset + 12, 80000000 * 4 div (2*8));           {Timeout (seconds-worth of Loader's Receive loop iterations}
-    SetHostInitializedValue(LoaderSize+RawLoaderInitOffset + 16, 423);                              {First Expected Packet ID}
-    {Insert Initial Call Frame}
-    Move(InitCallFrame[0], LoaderImage[LoaderSize], Length(InitCallFrame));
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset, 80000000 div 115200);                   {Initial Bit Time}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 4, 80000000 div 230400);               {Final Bit Time}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 8, trunc(1.5 * 80000000) div 230400);  {1.5x Final Bit Time}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 12, 80000000 * 4 div (2*8));           {Timeout (seconds-worth of Loader's Receive loop iterations}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 16, 423);                              {First Expected Packet ID}
     {Recalculate and update checksum}
     CheckSum := 0;
-    for i := 0 to LoaderSize-1+Length(InitCallFrame) do CheckSum := CheckSum + LoaderImage[i];
-//    for i := 0 to high(InitCallFrame) do CheckSum := CheckSum + InitCallFrame[i];
+    for i := 0 to RawLoaderAppSize*4-1+Length(InitCallFrame) do CheckSum := CheckSum + LoaderImage[i];
+    for i := 0 to high(InitCallFrame) do CheckSum := CheckSum + InitCallFrame[i];
     LoaderImage[5] := 256-CheckSum;
-    {Generate Propeller Download Stream from adjusted LoaderImage}
-    GenerateStream(LoaderImage, LoaderSize div 4, LoaderStream, LoaderStreamSize);
+    {Generate Propeller Download Stream from adjusted LoaderImage; Output delivered to LoaderStream and LoaderStreamSize}
+    GenerateStream(LoaderImage, RawLoaderAppSize, LoaderStream, LoaderStreamSize);
 
     {Prepare initial packet: contains handshake and Loader Stream.}
     SetLength(TxBuf, Length(TxHandshake)+11+LoaderStreamSize);                                      {Set initial packet size}
     Move(TxHandshake, TxBuf[0], Length(TxHandshake));                                               {Fill packet with handshake stream (timing template, handshake, and download command (RAM+Run))}
-    TxBuffLength := Length(TxHandshake);                                                            {followed by Raw Loader Images's size (in longs)}
-    AppendLong(LoaderSize div 4);
+    TxBuffLength := Length(TxHandshake);                                                            {followed by Raw Loader Images's App size (in longs)}
+    AppendLong(RawLoaderAppSize);
     Move(LoaderStream[0], TxBuf[TxBuffLength], LoaderStreamSize);                                   {and the Loader Stream image itself}
 
     {Begin download process}
@@ -477,7 +474,9 @@ begin
 
       if not XBee.ReceiveUDP(RxBuf, SerTimeout) then raise Exception.Create('Error, No Ready Signal from loader');   {Receive loader's ready signal}
 
-
+      {Set final baud rate here}
+      {Transmit packetized target application here}
+      {Make sure to set Expected Packet ID properly!!!!}
 
 
 

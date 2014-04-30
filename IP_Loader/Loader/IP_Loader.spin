@@ -26,7 +26,7 @@ DAT
                         mov     dira, TxPin
 
                         {Send ready signal at initial baud rate}
-                        jmp     SendSignal                                      'Send "ready" and switch to final baud rate
+                        jmp     #SendSignal                                     'Send "ready" and switch to final baud rate
                         
                         {Receive packet into Packet buffer}
   GetNextPacket         mov     PacketAddr, #Packet                             'Reset packet pointer
