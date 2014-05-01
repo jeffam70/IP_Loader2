@@ -15,8 +15,6 @@ MaxPacketPayload = 1392                                                         
 
 PUB Main
 
-  waitcnt(clkfreq + cnt)
-
   coginit(0, @Loader, 0)
 
 DAT
@@ -24,7 +22,7 @@ DAT
                         {Initialize Tx pin}
   Loader                mov     outa, TxPin                                     'Tx Pin to output high (resting state)
                         mov     dira, TxPin
-
+                        
                         {Send ready signal at initial baud rate}
                         jmp     #SendSignal                                     'Send "ready" and switch to final baud rate
                         

@@ -156,6 +156,8 @@ type
     property SerialTimeout : Integer index 0 read GetTimeout write SetTimeout;                       {Read-timeout for serial service}
     property ApplicationTimeout : Integer index 1 read GetTimeout write SetTimeout;                  {Read-timeout for application service}
     property UDPRoundTrip : Integer read FUDPRoundTrip;                                              {Get last round-trip time for UDP App Packets}
+    { TODO : Determin if MaxDataSize property should retrieve the actual value when called. }
+    property MaxDataSize : Cardinal read FMaxDataSize;                                               {Get maximum packet payload size}
   private
     { Private declarations }
     {XBee Application Service buffer transmit methods}

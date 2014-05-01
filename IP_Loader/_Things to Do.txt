@@ -13,24 +13,18 @@ THINGS TO DO
 * Download Method
   * Loader Image
     * Host sets target bit period value in loader image (before download) according to default/user-specified crystal speed
-      * May need to be last values in image for implementation simplicity
       * May need to set clock speed value LONG[0] and clock mode WORD[?]
     * Should support initial and target 9,600/19,200/38,400/57,600/115,200/230,400/460,800/921,600/1,000,000/1,500,000/2,000,000/3,000,000 baud rates
     * Handshake:
-      * Once loader starts, it transmits an acknowledgement to the host
-      * Host receives acknowledgement and switches to target baud rate
       * Host begins final image transmission
     * Final Image Transmission:
-      * Data is in units of 32-bits (longs)
       * Packetized; image data is encased in a packet wrapper
         * Packet wrapper leads each packet with a 32-bit Packet Size and a 32-bit Packet ID
           * Packet ID has dual purpose
             * it uniquely identifies the packet; every unique packet in the stream has a unique ID (duplicate packets have the same ID)
             * it indicates how many total packets are in (or left) in the Propeller Application Image
               * Packet ID count's down to 1.  The host precalculates the total number of required packets as the value for the first packet's Packet ID.
-                Further packets use the previous Packet ID - 1.
-        * Verify that UDP dumps corrupted packets
-          * Packet wrapper "may" end with a 32-bit CRC32 (if UDP doesn't dump corrupted packets)
+                New packets use the previous Packet ID - 1.
       * Each loader-received packet is acknowledged (positively or negatively)
         * Host retransmits packets that are not acknowledged, or negatively acknowledged
         * Loader positively acknowledges duplicates, but dumps duplicate data
@@ -84,8 +78,23 @@ THINGS DONE
   * Switch to compressed calibration pulse + handshake + download command + image size + loader image (single packet)
   * Loader Image
     * Full Propeller Application Written in Propeller Assembly
+      * May need to be last values in image for implementation simplicity
+
     * Handshake:
       * Uses standard bit encoding (instead of Propeller bit encoding)
+      * Once loader starts, it transmits an acknowledgement to the host
+      * Host receives acknowledgement and switches to target baud rate
+
+
+
+        * Verified that UDP dumps corrupted packets
+          * No need for CRC in packet wrapper
+
+    * Final Image Transmission:
+      * Data is in units of 32-bits (longs)
+
+
+
 
 * Timing
   * Try making routine to sleep.

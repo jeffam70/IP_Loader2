@@ -186,6 +186,8 @@ var
   LoaderStream     : PByteArray;                         {Loader Download Stream (Generated from Loader Image)}
   LoaderStreamSize : Integer;                            {Size of Loader Download Stream}
 
+  PacketID         : Integer;                            {ID of packet transmitted}
+
 const
   {After reset, the Propeller's exact clock rate is not known by either the host or the Propeller itself, so communication with the Propeller takes place based on
    a host-transmitted timing template that the Propeller uses to read the stream and generate the responses.  The host first transmits the 2-bit timing template,
@@ -246,9 +248,9 @@ const
   it assists with the remainder of the download (at a faster speed and with more relaxed interstitial timing conducive of Internet Protocol delivery.
   This memory image isn't used as-is; before download, it is first adjusted to contain special values assigned by this host (communication timing and
   synchronization values) and then is translated into an optimized Propeller Download Stream understandable by the Propeller ROM-based boot loader.}
-  RawLoaderAppSize = 75;
-  RawLoaderImage : array[0..299] of byte = ($00,$B4,$C4,$04,$6F,$D9,$10,$00,$2C,$01,$34,$01,$20,$01,$38,$01,
-                                            $1C,$01,$02,$00,$10,$01,$00,$00,$3C,$E8,$BF,$A0,$3C,$EC,$BF,$A0,
+  RawLoaderAppSize = 74;
+  RawLoaderImage : array[0..295] of byte = ($00,$B4,$C4,$04,$6F,$BD,$10,$00,$28,$01,$30,$01,$20,$01,$34,$01,
+                                            $18,$01,$02,$00,$10,$01,$00,$00,$3C,$E8,$BF,$A0,$3C,$EC,$BF,$A0,
                                             $15,$00,$7C,$5C,$48,$8E,$FC,$A0,$47,$10,$BC,$54,$47,$12,$BC,$54,
                                             $04,$8C,$FC,$A0,$27,$6C,$FC,$5C,$44,$90,$BC,$68,$08,$90,$FC,$20,
                                             $07,$8C,$FC,$E4,$01,$8E,$FC,$80,$01,$6E,$FC,$80,$04,$90,$FC,$E4,
@@ -265,9 +267,9 @@ const
                                             $00,$00,$7C,$5C,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,
                                             $00,$02,$00,$00,$00,$00,$00,$80,$00,$00,$00,$40,$B6,$02,$00,$00,
                                             $5B,$01,$00,$00,$08,$02,$00,$00,$00,$2D,$31,$01,$00,$00,$00,$00,
-                                            $35,$C0,$3F,$91,$EC,$23,$35,$C7,$08,$35,$2C,$32);
+                                            $35,$C7,$08,$35,$2C,$32,$00,$00);
 
-  RawLoaderInitOffset = -(8*4);          {Offset (in bytes) from end of Loader Image pointing to where host-initialized values exist.
+  RawLoaderInitOffset = -(7*4);          {Offset (in bytes) from end of Loader Image pointing to where host-initialized values exist.
                                           Host-Initialized values are: Initial Bit Time, Final Bit Time, 1.5x Bit Time, Timeout, and
                                           ExpectedID (as well as image checksum).  They need to be updated before the download stream
                                           is generated.}
@@ -413,6 +415,10 @@ begin
   FRxBuffStart := 0;
   FRxBuffEnd := 0;
 
+  {Determine number of required packets for target application image; value becomes first Packet ID}
+  SetRoundMode(rmUp);
+  PacketID := Round(FBinSize*4 / (XBee.MaxDataSize-4*2));                                           {Calculate required number of packets for target image; binary image size (in bytes) / (max packet size - packet header)}
+
   {Prepare Loader Image}
   getmem(LoaderImage, RawLoaderAppSize*4+1);                                                        {Reserve LoaderImage space for RawLoaderImage data plus 1 extra byte to accommodate generation routine}
   getmem(LoaderStream, ImageLimit div 4 * 11);                                                      {Reserve LoaderStream space for maximum-sized download stream}
@@ -425,10 +431,10 @@ begin
     SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 4, 80000000 div 230400);               {Final Bit Time}
     SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 8, trunc(1.5 * 80000000) div 230400);  {1.5x Final Bit Time}
     SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 12, 80000000 * 4 div (2*8));           {Timeout (seconds-worth of Loader's Receive loop iterations}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 16, 423);                              {First Expected Packet ID}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 16, PacketID);                         {First Expected Packet ID}
     {Recalculate and update checksum}
     CheckSum := 0;
-    for i := 0 to RawLoaderAppSize*4-1+Length(InitCallFrame) do CheckSum := CheckSum + LoaderImage[i];
+    for i := 0 to RawLoaderAppSize*4-1 do CheckSum := CheckSum + LoaderImage[i];
     for i := 0 to high(InitCallFrame) do CheckSum := CheckSum + InitCallFrame[i];
     LoaderImage[5] := 256-CheckSum;
     {Generate Propeller Download Stream from adjusted LoaderImage; Output delivered to LoaderStream and LoaderStreamSize}
@@ -442,8 +448,6 @@ begin
     Move(LoaderStream[0], TxBuf[TxBuffLength], LoaderStreamSize);                                   {and the Loader Stream image itself}
 
     {Begin download process}
-
-    //  if not XBee.ConnectTCP then
     if not XBee.ConnectSerialUDP then
       begin
       showmessage('Cannot connect');
@@ -472,11 +476,29 @@ begin
       {Receive ram checksum pass/fail}
       if ReceiveBit(True, 2500) = 1 then raise Exception.Create('RAM Checksum Error');//Error(ord(mtRAMChecksumError) + (strtoint(FComPort) shl 16));
 
-      if not XBee.ReceiveUDP(RxBuf, SerTimeout) then raise Exception.Create('Error, No Ready Signal from loader');   {Receive loader's ready signal}
+      {Now loader starts up in the Propeller; wait for loader's "ready" signal}
+      if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 4) then raise Exception.Create('Error, No Ready Signal from loader');   {Receive loader's ready signal}
+      if Cardinal(RxBuf[0]) <> PacketID then raise Exception.Create('Error, Loader communication failure');   {Check loader's ready signal}
 
-      {Set final baud rate here}
-      {Transmit packetized target application here}
-      {Make sure to set Expected Packet ID properly!!!!}
+      {Switch to final baud rate}
+      if not XBee.SetItem(xbSerialBaud, Baud230400) then raise Exception.Create('Can not switch to final baud rate');
+
+      {Transmit packetized target application}
+      i := 0;
+      repeat                                                                         {Transmit application image}
+        TxBuffLength := 2 + Min((XBee.MaxDataSize div 4)-2, FBinSize - i);           {  Determine packet length (in longs); header + packet limit or remaining data length}
+        SetLength(TxBuf, TxBuffLength*4);                                            {  Set buffer length (Packet Length) (in longs)}
+        Move(TxBuffLength, TxBuf[0], 4);                                             {  Store Packet Size (longs)}
+        Move(PacketID, TxBuf[4], 4);                                                 {  Store Packet ID}
+        Move(FBinImage[i*4], TxBuf[2*4], (TxBuffLength-2)*4);                        {  Store section of data}
+        repeat                                                                       {  Set application image packet, get acknowledgement, repeat as necessary}
+          { TODO : Think about limiting number of retransmissions }
+          if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Transmitting Application Image');
+          if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 4) then raise Exception.Create('Error, Loader communication failure');
+        until Cardinal(RxBuf[0]) = PacketID-1;
+        inc(i, TxBuffLength);                                                        {  Increment image index}
+        dec(PacketID);                                                               {  Decrement Packet ID (to next packet)}
+      until PacketID = 0;                                                            {Loop until done}
 
 
 
