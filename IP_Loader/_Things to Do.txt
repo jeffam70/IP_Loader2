@@ -37,7 +37,6 @@ THINGS TO DO
 * Consider
   * Adding Soft AP mode negotiation
   * Adding Wi-Fi Protected Setup mode (to hardware?)
-  * Determine how to find local addresses and subnet masks
   * Recording and restoring previous settings when done
     * This may be simpler with a single command, if there is one.
   * Could use I/O pin to instantiate flow control for a certain amount of time during reset,
@@ -69,6 +68,9 @@ THINGS DONE
 * Could stick to UDP for data because it's less overhead and timing in relation to reset is easer.
 * Why are we not able to set the IP or AP parameters?  There's no response, and then the XBee seems to lock up.
   * Determined this is because of a firmware bug.
+* Determine how to find local addresses and subnet masks
+  * Local addresses are findable, but subnet masks are curiously hidden
+
 
 * First Try:
   * Dropped UDP Packets
