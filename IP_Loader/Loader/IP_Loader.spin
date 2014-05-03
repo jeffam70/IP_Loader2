@@ -5,6 +5,9 @@
 
  Any symbols in the assembly's "Constants" section labeled "[host init]" has their values set by the host before this application image is
  transmission via the first packet.
+
+ Host Requirements:
+
 }
 
 CON
@@ -110,18 +113,21 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
 
 {Transmit byte to host.
  Requirements:  SByte must contain desired byte value to transmit.
- Results:       SByte serially transmitted.}
+ Results:       SByte serially transmitted.
+                SByte = 0 upon return.}
 
-  Transmit                  or      SByte, #%1_0000_0000                                'Append stop bit
+  Transmit                  and     SByte, #$FF                                         'Retain low byte only
+                            or      SByte, #%1_0000_0000                                'Append stop bit; also acts as loop trigger
                             shl     SByte, #1                                           'Prepend start bit
-                            mov     Bits, #10                                           'Ready 10 bits
+'                           mov     Bits, #10                                           'Ready 10 bits
                             mov     BitDelay, BitTime                                   'Prep first bit window; ensure prev. stop bit window
                             add     BitDelay, cnt                                        
                                                                                          
     :TxBit                  shr     SByte, #1               wc      '4                  'Get next bit
                             waitcnt BitDelay, BitTime               '6+                 'Wait for edge of bit window
                             muxc    outa, TxPin                     '4![18+]            'Output next bit
-                            djnz    Bits, #:TxBit                   '4/8                'Loop for next bit                
+                            tjnz    SByte, #:TxBit                  '4/8                'Loop for next bit
+'                           djnz    Bits, #:TxBit                   '4/8                'Loop for next bit                
   Transmit_ret              ret                                     '4                  'Done; return          
 
 '***************************************
@@ -132,21 +138,25 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                 Propeller will reset if no byte received within timeout.}
                 
   Receive                   mov     TimeDelay, Timeout              '4                  'Reset timeout delay
-                            mov     BitDelay, BitTime1_5            '4                  'Prep first bit sample window
-                            mov     Bits, #8                        '4                  'Ready for 8 bits
-    :RxWait                 test    RxPin, ina              wc      '4![8/x]            'Wait for Rx rest; nc=not resting
-              if_nc         djnz    TimeDelay, #:RxWait             '4/8                ' Not resting, loop until timeout
-              if_nc         clkset  Restart                         'x/4                ' Not resting and timed-out? Reset Propeller
-    :RxByte                 test    RxPin, ina              wc      '4![8/68/96]        'Wait for Rx start bit; c=resting
-              if_c          djnz    TimeDelay, #:RxByte             '4/8                ' Resting, loop until timeout
-              if_c          clkset  Restart                         'x/4                ' Resting and timed-out? Reset Propeller
-                            add     BitDelay, cnt                   '4                   
+                            mov     BitDelay, BitTime1_5    wc      '4                  'Prep first bit sample window; clear c for first :RxWait
+'                           mov     Bits, #8                        ''4                 'Ready for 8 bits
+    :RxWait                 muxc    SByte, #%1_1000_0000    wz      '4                  'Wait for Rx start bit (falling edge); Prep SByte for 8 bits
+    {:RxWait}               test    RxPin, ina              wc      '4![12/x]           ' Check Rx state; c=0 (not resting), c=1 (resting)
+              if_z_or_c     djnz    TimeDelay, #:RxWait             '4/x                ' No start bit (Z OR C)? loop until timeout
+              if_z_or_c     clkset  Restart                         'x/4                ' No start bit and timed-out? Reset Propeller
+'   :RxByte                 test    RxPin, ina              wc      ''4![8/68/96]       'Wait for Rx start bit; c=resting
+'             if_c          djnz    TimeDelay, #:RxByte             ''4/8               ' Resting, loop until timeout
+'             if_c          clkset  Restart                         ''x/4               ' Resting and timed-out? Reset Propeller
+                            add     BitDelay, cnt                   '4                  'Set time to...                   
     :RxBit                  waitcnt BitDelay, BitTime               '6+                 'Wait for center of bit
 '                           xor     outa, TxPin                                          
-                            test    RxPin, ina              wc      '4![22/94/122+]     'Sample bit
-                            shr     SByte, #1                       '4                  'Adjust result and store bit
-                            muxc    SByte, #%1000_0000              '4                  'Store bit
-                            djnz    Bits, #:RxBit                   '4/8                 
+                            test    RxPin, ina              wc      '4![22/82/110+]     '  Sample bit; c=0/1
+                            muxc    SByte, #%1_0000_0000            '4                  '  Store bit
+                            shr     SByte, #1               wc      '4                  '  Adjust result; c=0 (continue), c=1 (done)
+              if_nc         jmp     #:RxBit                         '4                  'Continue? Loop until done
+'                           shr     SByte, #1                       ''4                 'Adjust result and store bit
+'                           muxc    SByte, #%1000_0000              ''4                 'Store bit
+'                           djnz    Bits, #:RxBit                   ''4/8                 
   Receive_ret               ret                                     '4                  'Done; return
 
 '***************************************
@@ -177,7 +187,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   TimeDelay     res     1                                                       'Timout delay
   BitDelay      res     1                                                       'Bit time delay
   SByte         res     1                                                       'Serial Byte; received or to transmit
-  Bits          res     1                                                       'Bit counter
+' Bits          res     1                                                       'Bit counter
   Bytes                                                                         'Byte counter
   Zero          res     1                                                       'Zero value (for clearing RAM); 0 when Byte = 0
   PacketAddr    res     1                                                       'PacketAddr
