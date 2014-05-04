@@ -516,7 +516,7 @@ begin
         Move(TxBuffLength, TxBuf[0], 4);                                             {  Store Packet Size (longs)}
         Move(PacketID, TxBuf[4], 4);                                                 {  Store Packet ID}
         Move(FBinImage[i*4], TxBuf[2*4], (TxBuffLength-2)*4);                        {  Store section of data}
-        repeat                                                                       {  Set application image packet, get acknowledgement, repeat as necessary}
+        repeat                                                                       {  Send application image packet, get acknowledgement, retransmit as necessary}
           { TODO : Think about limiting number of retransmissions }
           if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Transmitting Application Image');
           if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 4) then raise Exception.Create('Error, Loader communication failure');
@@ -525,7 +525,9 @@ begin
         dec(PacketID);                                                               {  Decrement Packet ID (to next packet)}
       until PacketID = 0;                                                            {Loop until done}
 
-
+      {Receive ram checksum pass/fail}
+      if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 4) then raise Exception.Create('Error, Loader communication failure 2');
+      if Cardinal(RxBuf[0]) <> 0 then raise Exception.Create('Error: RAM Checksum Error');
 
 //    if XBee.ConnectTCP then
 //      begin
