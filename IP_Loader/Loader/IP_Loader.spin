@@ -63,6 +63,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
               if_z          sub     ExpectedID, #1                              '  Yes? Ready for next; No? Ready for retransmit
 
                             {Copy packet to Main RAM; ignore duplicate}
+                            sub     Longs, #2                                   'Remove header from long count
   CopyPacket  if_z          wrlong  PacketData{addr}, MainRAMAddr               'Write packet long to Main RAM
               if_z          add     MainRAMAddr, #4                             '  Increment Main RAM address
               if_z          add     CopyPacket, IncDest                         '  Increment PacketData address
@@ -88,12 +89,24 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
               if_nz         djnz    Longs, #:Clear                              'Loop until end; Main RAM Addr = $8000
                             
                             {Insert initial call frame}
-                            rdword  Longs, #5*2                                 'Get next stack address
+                            rdword  Longs, #5<<1                                'Get next stack address
                             sub     Longs, #4                                   'Adjust to previous stack address
                             wrlong  CallFrame, Longs                            'Store initial call frame
                             sub     Longs, #4                                   
                             wrlong  CallFrame, Longs
 
+                            
+{                           mov     Longs, EndOfRAM
+                            mov     MainRAMAddr, #0
+    :Read                   rdbyte  SByte, MainRAMAddr                          '  Read next byte from Main RAM
+                            call    #Transmit
+                            add     MainRAMAddr, #1
+                            djnz    Longs, #:Read                               'Loop for all RAM
+
+                            
+                            jmp     #$
+}
+                            
                             {Verify RAM}                                        '(SBytes = 0, MainRAMAddr = $8000)
     :Validate               sub     MainRAMAddr, #1                             'Decrement Main RAM Address
                             rdbyte  Bytes, MainRAMAddr                          '  Read next byte from Main RAM
@@ -109,8 +122,22 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             {Send EEPROM Checksum ACK/NAK here}
 
                             {Receive Run command here}
-                        
-                            jmp #$
+
+                            {Launch Application}
+                            rdword  MainRAMAddr, #3<<1                          'Check program base address
+                            cmp     MainRAMAddr, #$10       wz                  'nz=Invalid
+              if_nz         clkset  Restart                                     'Invalid?  Reset Propeller
+                                                                                 
+'                           rdbyte  Bytes, #4                                   'if xtal/pll enabled, start up now
+'                           and     Bytes, #$F8                                 '..while remaining in rcfast mode
+'                           clkset  Bytes                                        
+                                                                                 
+'   :delay                  djnz    time_xtal,#:delay                           'allow 20ms @20MHz for xtal/pll to settle
+                                                                                 
+'                           rdbyte  Bytes,#4                                    'switch to selected clock
+'                           clkset  Bytes                                        
+                                                                                 
+                            coginit interpreter                                 'Relaunch with Spin Interpreter
                        
 {***************************************
  *             Subroutines             *
@@ -180,6 +207,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   IncDest       long    %1_0_00000000                                           'Value to increment a register's destination field
   EndOfRAM      long    $8000                                                   'Address of end of RAM+1
   CallFrame     long    $FFF9_FFFF                                              'Initial call frame value
+  Interpreter   long    $0001 << 18 + $3C01 << 4 + %0000                        'Coginit value to launch Spin interpreter
   RxPin         long    |< 31                                                   'Receive pin mask (P31)
   TxPin         long    |< 30                                                   'Transmit pin mask (P30)
   
@@ -197,7 +225,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   SByte         res     1                                                       'Serial Byte; received or to transmit
 ' Bits          res     1                                                       'Bit counter
   Bytes                                                                         'Byte counter
-  Zero          res     1                                                       'Zero value (for clearing RAM); 0 when Byte = 0
+  Zero          res     1                                                       'Zero value (for clearing RAM); 0 when Bytes = 0
   PacketAddr    res     1                                                       'PacketAddr
   Packet                                                                        'Packet buffer
     PacketSize  res     1                                                       '  Header:  Packet Size
