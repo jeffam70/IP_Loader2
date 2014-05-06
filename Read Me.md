@@ -15,3 +15,4 @@ Project/Folder Description
   * PropellerStream - contains a related project meant to extract the micro boot loader components from the compiled binary image and provide
                       a Delphi array-based representation of those components for pasting into the IP_Loader project's GenerateLoaderPacket
                       method.
+    * Parser - contains "StreamParser," a subproject that takes a Delphi-code compatible download stream and parses it into a Propeller Image.
