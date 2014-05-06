@@ -2,10 +2,10 @@
 <BorlandProject>
 	<Transactions>
     <Transaction>2014/03/13 11:50:52.000.512,=C:\Users\jmartin\Documents\RAD Studio\Projects\Unit1.pas</Transaction>
-    <Transaction>2014/03/13 12:50:18.000.104,C:\Users\jmartin\Documents\RAD Studio\Projects\Unit1.pas=F:\IP\Main.pas</Transaction>
-    <Transaction>2014/03/13 12:50:18.000.105,C:\Users\jmartin\Documents\RAD Studio\Projects\Unit1.fmx=F:\IP\Main.fmx</Transaction>
-    <Transaction>2014/03/13 12:50:33.000.017,C:\Users\jmartin\Documents\RAD Studio\Projects\Project1.dproj=F:\IP\IP.dproj</Transaction>
+    <Transaction>2014/03/13 12:50:18.000.105,F:\IP\Main.fmx=C:\Users\jmartin\Documents\RAD Studio\Projects\Unit1.fmx</Transaction>
+    <Transaction>2014/03/13 12:50:18.000.104,F:\IP\Main.pas=C:\Users\jmartin\Documents\RAD Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2014/03/13 12:50:33.000.017,F:\IP\IP.dproj=C:\Users\jmartin\Documents\RAD Studio\Projects\Project1.dproj</Transaction>
     <Transaction>2014/03/24 09:08:08.000.449,=F:\IP\Unit1.pas</Transaction>
-    <Transaction>2014/03/24 09:08:34.000.510,F:\IP\Unit1.pas=F:\IP\XBeeWiFi.pas</Transaction>
+    <Transaction>2014/03/24 09:08:34.000.510,F:\IP\XBeeWiFi.pas=F:\IP\Unit1.pas</Transaction>
   </Transactions>
 </BorlandProject>

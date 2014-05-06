@@ -269,30 +269,31 @@ const
                                             $5B,$01,$00,$00,$08,$02,$00,$00,$00,$2D,$31,$01,$00,$00,$00,$00,
                                             $35,$C7,$08,$35,$2C,$32,$00,$00);
 }
-  RawLoaderAppSize = 90;
-  RawLoaderImage : array[0..359] of byte = ($00,$B4,$C4,$04,$6F,$2E,$10,$00,$68,$01,$70,$01,$60,$01,$74,$01,
-                                            $58,$01,$02,$00,$50,$01,$00,$00,$4C,$E8,$BF,$A0,$4C,$EC,$BF,$A0,
-                                            $15,$00,$7C,$5C,$57,$AC,$FC,$A0,$56,$10,$BC,$54,$56,$12,$BC,$54,
-                                            $04,$AA,$FC,$A0,$38,$88,$FC,$5C,$54,$AE,$BC,$68,$08,$AE,$FC,$20,
-                                            $07,$AA,$FC,$E4,$01,$AC,$FC,$80,$01,$8A,$FC,$80,$04,$AE,$FC,$E4,
-                                            $51,$B0,$3C,$86,$01,$A2,$E8,$84,$46,$B2,$28,$08,$04,$8C,$E8,$80,
-                                            $48,$20,$A8,$80,$10,$8A,$E8,$E4,$59,$20,$E8,$54,$04,$AA,$FC,$A0,
-                                            $51,$A8,$BC,$A0,$08,$A2,$FC,$20,$2E,$6E,$FC,$5C,$16,$AA,$FC,$E4,
-                                            $4E,$9A,$BC,$A0,$03,$A2,$7C,$E8,$49,$8A,$BC,$A0,$46,$8A,$BC,$84,
-                                            $02,$8A,$FC,$2A,$46,$AA,$14,$08,$04,$8C,$D4,$80,$1F,$8A,$D4,$E4,
-                                            $05,$8A,$FC,$04,$04,$8A,$FC,$84,$45,$94,$3C,$08,$04,$8A,$FC,$84,
-                                            $45,$94,$3C,$08,$01,$8C,$FC,$84,$46,$AA,$BC,$00,$55,$A8,$BC,$80,
-                                            $27,$8C,$7C,$E8,$FF,$A8,$FC,$62,$2E,$6E,$FC,$5C,$2D,$00,$7C,$5C,
-                                            $FF,$A8,$FC,$60,$00,$A9,$FC,$68,$01,$A8,$FC,$2C,$4D,$A6,$BC,$A0,
-                                            $F1,$A7,$BC,$80,$01,$A8,$FC,$29,$4D,$A6,$BC,$F8,$4C,$E8,$BF,$70,
-                                            $33,$A8,$7C,$E8,$00,$00,$7C,$5C,$50,$A4,$BC,$A0,$4F,$A6,$BC,$A1,
-                                            $80,$A9,$FC,$72,$F2,$97,$3C,$61,$3A,$A4,$F8,$E4,$00,$8E,$78,$0C,
-                                            $F1,$A7,$BC,$80,$4D,$A6,$BC,$F8,$F2,$97,$3C,$61,$00,$A9,$FC,$70,
-                                            $01,$A8,$FC,$29,$3F,$00,$4C,$5C,$00,$00,$7C,$5C,$00,$00,$00,$00,
-                                            $00,$00,$00,$00,$80,$00,$00,$00,$00,$02,$00,$00,$00,$80,$00,$00,
-                                            $FF,$FF,$F9,$FF,$00,$00,$00,$80,$00,$00,$00,$40,$B6,$02,$00,$00,
-                                            $5B,$01,$00,$00,$08,$02,$00,$00,$00,$2D,$31,$01,$00,$00,$00,$00,
-                                            $35,$C7,$08,$35,$2C,$32,$00,$00);
+  RawLoaderAppSize = 96;
+  RawLoaderImage : array[0..383] of byte = ($00,$B4,$C4,$04,$6F,$E7,$10,$00,$80,$01,$88,$01,$78,$01,$8C,$01,
+                                            $70,$01,$02,$00,$68,$01,$00,$00,$52,$E8,$BF,$A0,$52,$EC,$BF,$A0,
+                                            $01,$E8,$FF,$68,$01,$EC,$FF,$68,$19,$00,$7C,$5C,$5D,$B8,$FC,$A0,
+                                            $5C,$14,$BC,$54,$5C,$18,$BC,$54,$5C,$1A,$BC,$54,$04,$B6,$FC,$A0,
+                                            $00,$BA,$FC,$A0,$3C,$94,$FC,$5C,$5A,$BA,$BC,$68,$08,$BA,$FC,$20,
+                                            $0B,$B6,$FC,$E4,$01,$B8,$FC,$80,$01,$96,$FC,$80,$06,$BA,$FC,$E4,
+                                            $57,$BC,$3C,$86,$01,$AE,$E8,$84,$4C,$BE,$28,$08,$04,$98,$E8,$80,
+                                            $4E,$28,$A8,$80,$14,$96,$E8,$E4,$5F,$28,$E8,$54,$04,$B6,$FC,$A0,
+                                            $57,$B4,$BC,$A0,$08,$AE,$FC,$20,$32,$76,$FC,$5C,$1A,$B6,$FC,$E4,
+                                            $54,$A6,$BC,$A0,$05,$AE,$7C,$E8,$4F,$96,$BC,$A0,$4C,$96,$BC,$84,
+                                            $02,$96,$FC,$2A,$4C,$B6,$14,$08,$04,$98,$D4,$80,$23,$96,$D4,$E4,
+                                            $0A,$96,$FC,$04,$04,$96,$FC,$84,$4B,$A0,$3C,$08,$04,$96,$FC,$84,
+                                            $4B,$A0,$3C,$08,$01,$98,$FC,$84,$4C,$B6,$BC,$00,$5B,$B4,$BC,$80,
+                                            $2B,$98,$7C,$E8,$FF,$B4,$FC,$62,$32,$76,$FC,$5C,$31,$00,$7C,$5C,
+                                            $FF,$B4,$FC,$60,$00,$B5,$FC,$68,$01,$B4,$FC,$2C,$53,$B2,$BC,$A0,
+                                            $F1,$B3,$BC,$80,$01,$B4,$FC,$29,$53,$B2,$BC,$F8,$52,$E8,$BF,$70,
+                                            $37,$B4,$7C,$E8,$00,$00,$7C,$5C,$56,$B0,$BC,$A0,$55,$B2,$BC,$A1,
+                                            $00,$B4,$FC,$A0,$80,$B5,$FC,$72,$F2,$A3,$3C,$61,$3F,$B0,$F8,$E4,
+                                            $00,$9A,$78,$0C,$F1,$B3,$BC,$80,$53,$B2,$BC,$F8,$01,$E8,$FF,$6C,
+                                            $F2,$A3,$3C,$61,$00,$B5,$FC,$70,$01,$B4,$FC,$29,$44,$00,$4C,$5C,
+                                            $00,$00,$7C,$5C,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,
+                                            $00,$02,$00,$00,$00,$80,$00,$00,$FF,$FF,$F9,$FF,$00,$00,$00,$80,
+                                            $00,$00,$00,$40,$B6,$02,$00,$00,$5B,$01,$00,$00,$08,$02,$00,$00,
+                                            $00,$2D,$31,$01,$00,$00,$00,$00,$35,$C7,$08,$35,$2C,$32,$00,$00);
 
   RawLoaderInitOffset = -(7*4);          {Offset (in bytes) from end of Loader Image pointing to where host-initialized values exist.
                                           Host-Initialized values are: Initial Bit Time, Final Bit Time, 1.5x Bit Time, Timeout, and
@@ -526,7 +527,7 @@ begin
       until PacketID = 0;                                                            {Loop until done}
 
       {Receive ram checksum pass/fail}
-      if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 4) then raise Exception.Create('Error, Loader communication failure 2');
+      if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 1) then raise Exception.Create('Error, Loader communication failure 2');
       if Cardinal(RxBuf[0]) <> 0 then raise Exception.Create('Error: RAM Checksum Error');
 
 //    if XBee.ConnectTCP then
@@ -603,7 +604,7 @@ begin
   //        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingRAM));
 
           {Receive ram checksum pass/fail}
-          if ReceiveBit(True, 2500) = 1 then raise Exception.Create('RAM Checksum Error');//Error(ord(mtRAMChecksumError) + (strtoint(FComPort) shl 16));
+//!!          if ReceiveBit(True, 2500) = 1 then raise Exception.Create('RAM Checksum Error');//Error(ord(mtRAMChecksumError) + (strtoint(FComPort) shl 16));
           {If download command 2-3, do the following}
           if FDownloadMode > 1 then
             begin

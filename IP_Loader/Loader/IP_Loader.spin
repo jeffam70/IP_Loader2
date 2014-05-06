@@ -36,15 +36,20 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             {Initialize Tx pin}
   Loader                    mov     outa, TxPin                                 'Tx Pin to output high (resting state)
                             mov     dira, TxPin
+
+                            or      outa, #1                                     'Sig Pin to output high
+                            or      dira, #1
                         
                             {Send ready signal at initial baud rate}
                             jmp     #SendSignal                                 'Send "ready" and switch to final baud rate
                         
                             {Receive packet into Packet buffer}
   GetNextPacket             mov     PacketAddr, #Packet                         'Reset packet pointer
-    :NextPacketLong         movd    :BuffAddr, PacketAddr           '4          'Point 'Packet{addr}' (dest field) at Packet buffer
+    :NextPacketLong         movd    :NextPacketByte-1, PacketAddr   '4
+                            movd    :BuffAddr, PacketAddr           '4          'Point 'Packet{addr}' (dest field) at Packet buffer
                             movd    :BuffAddr+1, PacketAddr         '4
                             mov     Bytes, #4                       '4          '  Ready for 1 long
+                            mov     Packet{addr}, #0                '4          '    Pre-clear 1 buffer long
     :NextPacketByte         call    #Receive                        '4          '    Get byte (resets if timeout)
       :BuffAddr             or      Packet{addr}, SByte             '4          '      store into long (low byte first)
                             ror     Packet{addr}, #8                '4          '      and adjust
@@ -83,7 +88,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
               if_nz         djnz    Longs, #:Clear                              'Loop until end; Main RAM Addr = $8000
                             
                             {Insert initial call frame}
-                            rdword  Longs, #5                                   'Get next stack address
+                            rdword  Longs, #5*2                                 'Get next stack address
                             sub     Longs, #4                                   'Adjust to previous stack address
                             wrlong  CallFrame, Longs                            'Store initial call frame
                             sub     Longs, #4                                   
@@ -140,6 +145,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   Receive                   mov     TimeDelay, Timeout              '4                  'Reset timeout delay
                             mov     BitDelay, BitTime1_5    wc      '4                  'Prep first bit sample window; clear c for first :RxWait
 '                           mov     Bits, #8                        ''4                 'Ready for 8 bits
+                            mov     SByte, #0
     :RxWait                 muxc    SByte, #%1_1000_0000    wz      '4                  'Wait for Rx start bit (falling edge); Prep SByte for 8 bits
     {:RxWait}               test    RxPin, ina              wc      '4![12/x]           ' Check Rx state; c=0 (not resting), c=1 (resting)
               if_z_or_c     djnz    TimeDelay, #:RxWait             '4/x                ' No start bit (Z OR C)? loop until timeout
@@ -149,7 +155,9 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
 '             if_c          clkset  Restart                         ''x/4               ' Resting and timed-out? Reset Propeller
                             add     BitDelay, cnt                   '4                  'Set time to...                   
     :RxBit                  waitcnt BitDelay, BitTime               '6+                 'Wait for center of bit
-'                           xor     outa, TxPin                                          
+    
+                            xor     outa, #1                                             
+
                             test    RxPin, ina              wc      '4![22/82/110+]     '  Sample bit; c=0/1
                             muxc    SByte, #%1_0000_0000            '4                  '  Store bit
                             shr     SByte, #1               wc      '4                  '  Adjust result; c=0 (continue), c=1 (done)
