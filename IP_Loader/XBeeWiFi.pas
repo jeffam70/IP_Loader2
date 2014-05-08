@@ -131,38 +131,38 @@ type
     constructor Create;
     destructor Destroy;
     {XBee Application Service configuration methods}
-    function  GetItem(Command: xbCommand; var Str: String): Boolean; overload;                       {Get string value}
-    function  GetItem(Command: xbCommand; var StrList: TSimpleStringList): Boolean; overload;        {Get list of string values}
-    function  GetItem(Command: xbCommand; var Num: Cardinal): Boolean; overload;                     {Get numeric value}
-    function  GetItem(Command: xbCommand; var NumList: TSimpleNumberList): Boolean; overload;        {Get list of numeric values}
-    function  SetItem(Command: xbCommand; Str: String): Boolean; overload;                           {Set string value}
-    function  SetItem(Command: xbCommand; Num: Cardinal): Boolean; overload;                         {Set numeric value}
+    function  GetItem(Command: xbCommand; var Str: String): Boolean; overload;                             {Get string value}
+    function  GetItem(Command: xbCommand; var StrList: TSimpleStringList): Boolean; overload;              {Get list of string values}
+    function  GetItem(Command: xbCommand; var Num: Cardinal): Boolean; overload;                           {Get numeric value}
+    function  GetItem(Command: xbCommand; var NumList: TSimpleNumberList): Boolean; overload;              {Get list of numeric values}
+    function  SetItem(Command: xbCommand; Str: String): Boolean; overload;                                 {Set string value}
+    function  SetItem(Command: xbCommand; Num: Cardinal): Boolean; overload;                               {Set numeric value}
     {XBee UDP data methods}
     { TODO : Resolve TCP and UDP serial vs application names from interface perspective. }
-    function  ConnectSerialUDP: Boolean;                                                             {Connect UDP channel to Serial Service}
-    function  DisconnectSerialUDP: Boolean;                                                          {Disconnect UDP channel from Serial Service}
-    function  SendUDP(Data: TIDBytes; UseAppService: Boolean = True): Boolean;                       {Send data with UDP; over Application Service (normally) or Serial Serivce}
-    function  ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;                            {Receive data with UDP; over Serial Service only}
+    function  ConnectSerialUDP: Boolean;                                                                   {Connect UDP channel to Serial Service}
+    function  DisconnectSerialUDP: Boolean;                                                                {Disconnect UDP channel from Serial Service}
+    function  SendUDP(Data: TIDBytes; UseAppService: Boolean = True; AutoRetry: Boolean = True): Boolean;  {Send data with UDP; over Application Service (normally) or Serial Serivce}
+    function  ReceiveUDP(var Data: TIDBytes; Timeout: Cardinal): Boolean;                                  {Receive data with UDP; over Serial Service only}
     {XBee TCP data methods}
-    function  ConnectTCP: Boolean;                                                                   {Connect TCP channel to Serial Service}
-    function  DisconnectTCP: Boolean;                                                                {Disconnect TCP channel from Serial Service}
-    function  SendTCP(Data: TIDBytes): Boolean;                                                      {Send data with TCP; over Serial Service}
-    function  ReceiveTCP(var Data: TIDBytes; Timeout: Cardinal): Boolean;                            {Receive data with TCP; over Serial Service}
+    function  ConnectTCP: Boolean;                                                                         {Connect TCP channel to Serial Service}
+    function  DisconnectTCP: Boolean;                                                                      {Disconnect TCP channel from Serial Service}
+    function  SendTCP(Data: TIDBytes): Boolean;                                                            {Send data with TCP; over Serial Service}
+    function  ReceiveTCP(var Data: TIDBytes; Timeout: Cardinal): Boolean;                                  {Receive data with TCP; over Serial Service}
     {Class properties}
-    property RemoteIPAddr : String read GetRemoteIPAddr write SetRemoteIPAddr;                       {IP address of XBee to contact (for both Serial and Application services)}
-    property RemoteSerialIPPort : Cardinal read GetRemoteSerIPPort write SetRemoteSerIPPort;         {IP port of XBee to contact (for Serial service only; Application service's port is fixed)}
+    property RemoteIPAddr : String read GetRemoteIPAddr write SetRemoteIPAddr;                             {IP address of XBee to contact (for both Serial and Application services)}
+    property RemoteSerialIPPort : Cardinal read GetRemoteSerIPPort write SetRemoteSerIPPort;               {IP port of XBee to contact (for Serial service only; Application service's port is fixed)}
 //    property LocalUDPPort : Cardinal read GetLocalUDPPort write SetLocalUDPPort;
 //    property LocalTCPPort : Cardinal read GetLocalTCPPort write SetLocalTCPPort;
-    property SerialTimeout : Integer index 0 read GetTimeout write SetTimeout;                       {Read-timeout for serial service}
-    property ApplicationTimeout : Integer index 1 read GetTimeout write SetTimeout;                  {Read-timeout for application service}
-    property UDPRoundTrip : Integer read FUDPRoundTrip;                                              {Get last round-trip time for UDP App Packets}
+    property SerialTimeout : Integer index 0 read GetTimeout write SetTimeout;                             {Read-timeout for serial service}
+    property ApplicationTimeout : Integer index 1 read GetTimeout write SetTimeout;                        {Read-timeout for application service}
+    property UDPRoundTrip : Integer read FUDPRoundTrip;                                                    {Get last round-trip time for UDP App Packets}
     { TODO : Determin if MaxDataSize property should retrieve the actual value when called. }
-    property MaxDataSize : Cardinal read FMaxDataSize;                                               {Get maximum packet payload size}
+    property MaxDataSize : Cardinal read FMaxDataSize;                                                     {Get maximum packet payload size}
   private
     { Private declarations }
     {XBee Application Service buffer transmit methods}
     procedure PrepareAppBuffer(Command: xbCommand; ParamStr: String = ''; ParamNum: Int64 = -1; ParamData: TIdBytes = nil);
-    function  TransmitAppUDP(ExpectMultiple: Boolean = False): Boolean;
+    function  TransmitAppUDP(ExpectMultiple: Boolean = False; AutoRetry: Boolean = True): Boolean;
     procedure Pause(Duration: Integer);
   end;
 
@@ -448,7 +448,7 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.SendUDP(Data: TIDBytes; UseAppService: Boolean = True): Boolean;
+function TXBeeWiFi.SendUDP(Data: TIDBytes; UseAppService: Boolean = True; AutoRetry: Boolean = True): Boolean;
 {Send UDP data packet to XBee's UART.  Data must be sized to exactly the number of bytes to transmit.
  This normally uses the Application Service to verify the data packet was received (packet acknowlegement).
  Set UseAppService to False to use Serial Service instead (no verified receipt).
@@ -469,7 +469,7 @@ var
       if UseAppService then                                                                      {Use Application Service?}
         begin {Prep and send data using Application Service}
         PrepareAppBuffer(xbData, '', -1, Buffer);                                                {  Prepare data packet}
-        Result := TransmitAppUDP;                                                                {  and transmit it using Application Service}
+        Result := TransmitAppUDP(False, AutoRetry);                                              {  and transmit it using Application Service}
         end
       else
         begin                                                                                    {Else}
@@ -548,7 +548,7 @@ begin
   SetLength(Data, DefaultBufferSize);                                                                        {Resize buffer to standard max packet size}
   Count := FSerUDPClient.ReceiveBuffer(Data, Timeout);
   SetLength(Data, Count);                                                                                    {Receive data and resize buffer to exactly fit it}
-  Result := Length(Data) > 0;
+  Result := Count > 0;
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -676,7 +676,7 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function TXBeeWiFi.TransmitAppUDP(ExpectMultiple: Boolean = False): Boolean;
+function TXBeeWiFi.TransmitAppUDP(ExpectMultiple: Boolean = False; AutoRetry: Boolean = True): Boolean;
 {Transmit UDP packet (which should have already been prepared by a call to PrepareBuffer).
  Returns True if successful, False otherwise.
  Set ExpectMultiple true if multiple responses possible, such as when a packet is being broadcast to multiple XBee modules.
@@ -716,7 +716,7 @@ begin
 { TODO : Enhance SetItem log errors }
 //  self.Caption := 'Transmitting...';
   try
-    TxCount := 3;                                                                                              {Set max number of transmissions}
+    TxCount := 1 + 2*ord(AutoRetry);                                                                           {Set max number of transmissions; just once if AutoRetry False}
     repeat                                                                                                     {Loop (in case of retransmission)}
       Result := False;                                                                                         {  Initialize result to false}
       RequiredRx := 0;                                                                                         {  Initialize required reception to none}

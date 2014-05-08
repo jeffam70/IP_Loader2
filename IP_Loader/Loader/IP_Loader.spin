@@ -45,6 +45,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                         
                             {Receive packet into Packet buffer}
   GetNextPacket             mov     PacketAddr, #Packet                         'Reset packet pointer
+                            mov     Longs, #0                       '4          'Reset long counter
     :NextPacketLong         movd    :NextPacketByte-1, PacketAddr   '4
                             movd    :BuffAddr, PacketAddr           '4          'Point 'Packet{addr}' (dest field) at Packet buffer
                             movd    :BuffAddr+1, PacketAddr         '4
