@@ -169,6 +169,7 @@ type
   {Non-object functions and procedures}
   function FormatIPAddr(Addr: Cardinal): String;
   function FormatMACAddr(AddrHigh, AddrLow: Cardinal): String;
+  function CheckTime(Delay: Cardinal = 0): Cardinal;
 
 const
   {Network Header Metrics}
@@ -209,6 +210,10 @@ const
   DefaultApplicationTimeout = 1000;
   DefaultBufferSize         = 1500;              {Default size for receive buffer(s)}
   DefaultMaxDataSize        = 1392;
+
+var
+  ctTime  : Int64;                               {Holds start time for CheckTime function}
+  ctDelay : Cardinal;                            {Holds desired delay (in milliseconds) for CheckTime function}
 
 implementation
 
@@ -452,6 +457,7 @@ function TXBeeWiFi.SendUDP(Data: TIDBytes; UseAppService: Boolean = True; AutoRe
 {Send UDP data packet to XBee's UART.  Data must be sized to exactly the number of bytes to transmit.
  This normally uses the Application Service to verify the data packet was received (packet acknowlegement).
  Set UseAppService to False to use Serial Service instead (no verified receipt).
+ Set AutoRetry to false to optionally prevent automatic retries (when UseAppService is active).
  Returns True if successful, False if not.}
 var
   TempTxBuff     : TIdBytes;  {Temporary transmission buffer used only when Data is too big}
@@ -546,9 +552,13 @@ var
 begin
   if not FSerUDPClient.Connected then raise Exception.Create('Error: Serial UDP socket must first be connected.');
   SetLength(Data, DefaultBufferSize);                                                                        {Resize buffer to standard max packet size}
-  Count := FSerUDPClient.ReceiveBuffer(Data, Timeout);
+  CheckTime(Timeout);
+  repeat
+    Count := FSerUDPClient.ReceiveBuffer(Data, Timeout);
+  until (Count > 0) or (CheckTime = 0);
   SetLength(Data, Count);                                                                                    {Receive data and resize buffer to exactly fit it}
   Result := Count > 0;
+  SendDebugMessage('Result: ' + ifthen(Result, 'True', 'False') + ' Count: ' + Count.ToString, True);
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -678,10 +688,11 @@ end;
 
 function TXBeeWiFi.TransmitAppUDP(ExpectMultiple: Boolean = False; AutoRetry: Boolean = True): Boolean;
 {Transmit UDP packet (which should have already been prepared by a call to PrepareBuffer).
- Returns True if successful, False otherwise.
+ Returns True if successful, False otherwise.  NOTE: Returns False only if AutoRetry is True and expected responses not received.
  Set ExpectMultiple true if multiple responses possible, such as when a packet is being broadcast to multiple XBee modules.
  This method creates and sends a UDP packet over the XBee's Application Service, and checks and validates the response (if any).
- The full response packet can be seen in PRxBuf.}
+ The full response packet can be seen in PRxBuf.
+ If AutoRetry is true, the packet is automatically retransmitted if expected response(s) not received.}
 var
   RLIdx         : Integer;              // response list index
 //  IP            : String;
@@ -746,9 +757,11 @@ begin
           end;
         end;
       dec(TxCount);
-      Result := (RequiredRx >= PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp) and (Status = 0);
+      Result := ((RequiredRx >= PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp) and (Status = 0));
     until Result or (TxCount = 0);
-    if TxCount < 2 then SendDebugMessage('Retried: ' + inttostr(2-TxCount), True);
+    {Adjust Result if AutoRetry is False}
+    Result := Result or not AutoRetry;
+//    if TxCount < 2 then SendDebugMessage('Retried: ' + inttostr(2-TxCount), True);
 //    case RequiredRx of
 //      0 : self.Caption := 'No Response';
 //      1 : self.Caption := 'Only Ack received';
@@ -811,6 +824,21 @@ function FormatMACAddr(AddrHigh, AddrLow: Cardinal): String;
 {Return MAC Address (48-bit number in MacAddrHigh:MaccAddrLow) in standard string format}
 begin
   Result := Format('%.2x:%.2x:%.2x:%.2x:%.2x:%.2x', [AddrHigh shr 8 and $FF, AddrHigh and $FF, AddrLow shr 24 and $FF, AddrLow shr 16 and $FF, AddrLow shr 8 and $FF, AddrLow and $FF]);
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function CheckTime(Delay: Cardinal = 0): Cardinal;
+{Mark time (if Delay > 0) and note if last time Delay has passed (if Delay = 0).
+ Returns time left to complete previous Delay, or 0 if time delay has already passed.}
+begin
+  if Delay > 0 then
+    begin {New delay; note time and delay value}
+    ctTime := Ticks;
+    ctDelay := Delay;
+    end;
+  {Calculate and return difference between current time and last delay}
+  Result := Max(0, Integer(ctDelay - GetTickDiff(ctTime, Ticks)));
 end;
 
 {----------------------------------------------------------------------------------------------------}

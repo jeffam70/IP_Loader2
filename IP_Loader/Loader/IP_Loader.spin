@@ -39,6 +39,15 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
 
                             or      outa, #1                                     'Sig Pin to output high
                             or      dira, #1
+
+                            {Wait for resting RxPin}
+                            mov     BitDelay, BitTime       wc                   'Prep wait for 1/2 bit periods; clear c for first :RxWait
+                            shr     BitDelay, #1
+                            add     BitDelay, cnt
+    :RxWait   if_nc         mov     TimeDelay, #8*20                             'If RxPin active (c=0), reset sample count; 8 bytes * 20 samples per byte
+                            waitcnt BitDelay, BitTime
+                            test    RxPin, ina              wc                   '  Check Rx state; c=0 (not resting), c=1 (resting)
+                            djnz    TimeDelay, #:RxWait                          'Rx busy? Loop until resting 8 byte periods
                         
                             {Send ready signal at initial baud rate}
                             jmp     #SendSignal                                 'Send "ready" and switch to final baud rate
