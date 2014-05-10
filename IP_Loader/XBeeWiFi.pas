@@ -455,8 +455,8 @@ end;
 
 function TXBeeWiFi.SendUDP(Data: TIDBytes; UseAppService: Boolean = True; AutoRetry: Boolean = True): Boolean;
 {Send UDP data packet to XBee's UART.  Data must be sized to exactly the number of bytes to transmit.
- This normally uses the Application Service to verify the data packet was received (packet acknowlegement).
- Set UseAppService to False to use Serial Service instead (no verified receipt).
+ This normally uses the Application Service to verify the data packet was received (packet acknowlegement) and retransmits if needed.
+ Set UseAppService to False to use Serial Service instead (no verified receipt) and no automatic retransmission.
  Set AutoRetry to false to optionally prevent automatic retries (when UseAppService is active).
  Returns True if successful, False if not.}
 var

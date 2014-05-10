@@ -23,25 +23,26 @@ type
   end;
 
   TForm1 = class(TForm)
-    Button1: TButton;
-    Button2: TButton;
     PCPortLabel: TLabel;
     IPPort: TEdit;
     PortLabel: TLabel;
     IdentifyButton: TButton;
-    ResetPulseButton: TButton;
     NodeID: TEdit;
     PCPortCombo: TComboBox;
     IPAddr: TEdit;
     MACAddr: TEdit;
-    TransmitButton: TButton;
     OpenDialog: TOpenDialog;
-    LoadButton: TButton;
     BroadcastAddress: TEdit;
     Label1: TLabel;
     Progress: TProgressBar;
     ProgressLabel: TLabel;
     StatusLabel: TLabel;
+    ButtonLayout: TLayout;
+    Button1: TButton;
+    Button2: TButton;
+    ResetPulseButton: TButton;
+    LoadButton: TButton;
+    TransmitButton: TButton;
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure IdentifyButtonClick(Sender: TObject);
@@ -60,9 +61,10 @@ type
     { Public declarations }
   end;
 
-  EFileCorrupt = class(Exception); {File Corrupt exception}
-
-
+  EFileCorrupt  = class(Exception);     {File Corrupt exception}
+  EDownload = class(Exception);         {Download protocol base exception class}
+  ESoftDownload = class(EDownload);     {Soft download protocol error}
+  EHardDownload = class(EDownload);     {Hard download protocol error; fatal}
 
 var
   Form1     : TForm1;
@@ -132,7 +134,6 @@ end;
 procedure TForm1.Button2Click(Sender: TObject);
 begin
   XBee.SetItem(xbIO2State, pinOutLow);
-  caption := inttostr(XBee.UDPRoundTrip);
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -169,7 +170,11 @@ begin
               PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB));
               end;
       end;
-    if PCPortCombo.Count > 0 then PCPortCombo.DropDown;
+    if PCPortCombo.Count > 0 then
+      begin
+      PCPortCombo.Enabled := True;
+      PCPortCombo.DropDown;
+      end;
     end;
 end;
 
@@ -413,289 +418,311 @@ const
    {----------------}
 
 begin
-  if FBinSize = 0 then exit;
+  try {Handle download errors}
+    if FBinSize = 0 then exit;
 
-  FVersionMode := False;
-  FDownloadMode := 1; {The download command; 1 = write to RAM and run, 2 = write to EEPROM and stop, 3 = write to EEPROM and run}
+    TransmitButton.Enabled := False;
 
-  FRxBuffStart := 0;
-  FRxBuffEnd := 0;
+    FVersionMode := False;
+    FDownloadMode := 1; {The download command; 1 = write to RAM and run, 2 = write to EEPROM and stop, 3 = write to EEPROM and run}
 
-  {Reserve memory for Loader Image}
-  getmem(LoaderImage, RawLoaderAppSize*4+1);                                                        {Reserve LoaderImage space for RawLoaderImage data plus 1 extra byte to accommodate generation routine}
-  getmem(LoaderStream, ImageLimit div 4 * 11);                                                      {Reserve LoaderStream space for maximum-sized download stream}
+    FRxBuffStart := 0;
+    FRxBuffEnd := 0;
 
-  try {Reserved Memory}
+    {Reserve memory for Loader Image}
+    getmem(LoaderImage, RawLoaderAppSize*4+1);                                                        {Reserve LoaderImage space for RawLoaderImage data plus 1 extra byte to accommodate generation routine}
+    getmem(LoaderStream, ImageLimit div 4 * 11);                                                      {Reserve LoaderStream space for maximum-sized download stream}
 
-    STime := Ticks;
+    try {Reserved Memory}
+
+      STime := Ticks;
   
-    {Determine number of required packets for target application image; value becomes first Packet ID}
-    SetRoundMode(rmUp);
-    TotalPackets := Round(FBinSize*4 / (XBee.MaxDataSize-4*2));                                               {Calculate required number of packets for target image; binary image size (in bytes) / (max packet size - packet header)}
-    PacketID := TotalPackets;
-    {Initialize Progress Bar to proper size}
-    InitializeProgress(7 + TotalPackets);
-    {Prepare Loader Image}
-    Move(RawLoaderImage, LoaderImage[0], RawLoaderAppSize*4);                                                 {Copy raw loader image to LoaderImage (for adjustments and processing)}
-    {Clear checksum}
-    LoaderImage[5] := 0;
-    {Set host-initialized values}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset, 80000000 div InitialBaud);                {Initial Bit Time}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 4, 80000000 div FinalBaud);              {Final Bit Time}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 8, trunc(1.5 * 80000000) div FinalBaud); {1.5x Final Bit Time}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 12, 80000000 * 4 div (2*8));             {Timeout (seconds-worth of Loader's Receive loop iterations}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 16, PacketID);                           {First Expected Packet ID}
-    {Recalculate and update checksum}
-    CheckSum := 0;
-    for i := 0 to RawLoaderAppSize*4-1 do CheckSum := CheckSum + LoaderImage[i];
-    for i := 0 to high(InitCallFrame) do CheckSum := CheckSum + InitCallFrame[i];
-    LoaderImage[5] := 256-CheckSum;
-    {Generate Propeller Download Stream from adjusted LoaderImage; Output delivered to LoaderStream and LoaderStreamSize}
-    GenerateStream(LoaderImage, RawLoaderAppSize, LoaderStream, LoaderStreamSize);
+      {Determine number of required packets for target application image; value becomes first Packet ID}
+      SetRoundMode(rmUp);
+      TotalPackets := Round(FBinSize*4 / (XBee.MaxDataSize-4*2));                                               {Calculate required number of packets for target image; binary image size (in bytes) / (max packet size - packet header)}
+      PacketID := TotalPackets;
+      {Initialize Progress Bar to proper size}
+      InitializeProgress(7 + TotalPackets);
+      {Prepare Loader Image}
+      Move(RawLoaderImage, LoaderImage[0], RawLoaderAppSize*4);                                                 {Copy raw loader image to LoaderImage (for adjustments and processing)}
+      {Clear checksum}
+      LoaderImage[5] := 0;
+      {Set host-initialized values}
+      SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset, 80000000 div InitialBaud);                {Initial Bit Time}
+      SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 4, 80000000 div FinalBaud);              {Final Bit Time}
+      SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 8, trunc(1.5 * 80000000) div FinalBaud); {1.5x Final Bit Time}
+      SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 12, 80000000 * 4 div (2*8));             {Timeout (seconds-worth of Loader's Receive loop iterations}
+      SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 16, PacketID);                           {First Expected Packet ID}
+      {Recalculate and update checksum}
+      CheckSum := 0;
+      for i := 0 to RawLoaderAppSize*4-1 do CheckSum := CheckSum + LoaderImage[i];
+      for i := 0 to high(InitCallFrame) do CheckSum := CheckSum + InitCallFrame[i];
+      LoaderImage[5] := 256-CheckSum;
+      {Generate Propeller Download Stream from adjusted LoaderImage; Output delivered to LoaderStream and LoaderStreamSize}
+      GenerateStream(LoaderImage, RawLoaderAppSize, LoaderStream, LoaderStreamSize);
 
-    {Begin download process}
-    if not XBee.ConnectSerialUDP then
-      begin
-      showmessage('Cannot connect');
-      exit;
-      end;
+      {Begin download process}
+      if not XBee.ConnectSerialUDP then
+        begin
+        showmessage('Cannot connect');
+        exit;
+        end;
       
-    try {UDP Connected}
-      Retry := 3;
-      repeat {Connecting Propeller}                                                                     {Try connecting up to 3 times}
-        UpdateProgress(pReset);
+      try {UDP Connected}
+        Retry := 3;
+        repeat {Connecting Propeller}                                                                     {Try connecting up to 3 times}
+          UpdateProgress(pReset);
 
-        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - **** CONNECTING ***', True);
+          SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - **** CONNECTING ***', True);
       
-        {Prepare initial packet; contains handshake and Loader Stream.}
-        SetLength(TxBuf, Length(TxHandshake)+11+LoaderStreamSize);                                      {Set initial packet size}
-        if Length(TxBuf) > XBee.MaxDataSize then raise Exception.Create('Error: Initial packet is too large (' + Length(TxBuf).ToString + ' bytes)!');
+          {Prepare initial packet; contains handshake and Loader Stream.}
+          SetLength(TxBuf, Length(TxHandshake)+11+LoaderStreamSize);                                      {Set initial packet size}
+          if Length(TxBuf) > XBee.MaxDataSize then
+            raise EHardDownload.Create('Developer Error: Initial packet is too large (' + Length(TxBuf).ToString + ' bytes)!');
 
-        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Initial packet size: ' + Length(TxBuf).ToString + ' bytes', True);
+          SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Initial packet size: ' + Length(TxBuf).ToString + ' bytes', True);
 
-        Move(TxHandshake, TxBuf[0], Length(TxHandshake));                                               {Fill packet with handshake stream (timing template, handshake, and download command (RAM+Run))}
-        TxBuffLength := Length(TxHandshake);                                                            {followed by Raw Loader Images's App size (in longs)}
-        AppendLong(RawLoaderAppSize);
-        Move(LoaderStream[0], TxBuf[TxBuffLength], LoaderStreamSize);                                   {and the Loader Stream image itself}
+          Move(TxHandshake, TxBuf[0], Length(TxHandshake));                                               {Fill packet with handshake stream (timing template, handshake, and download command (RAM+Run))}
+          TxBuffLength := Length(TxHandshake);                                                            {followed by Raw Loader Images's App size (in longs)}
+          AppendLong(RawLoaderAppSize);
+          Move(LoaderStream[0], TxBuf[TxBuffLength], LoaderStreamSize);                                   {and the Loader Stream image itself}
 
-        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Generating reset signal', True);
+          SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Generating reset signal', True);
 
-        try {Connecting...}
-          {(Enforce XBee Configuration and...) Generate reset signal, then wait for serial transfer window}
-          UpdateProgress(0, 'Generating reset signal');
-          GenerateResetSignal;
-          Pause(190);
+          try {Connecting...}
+            {(Enforce XBee Configuration and...) Generate reset signal, then wait for serial transfer window}
+            UpdateProgress(0, 'Generating reset signal');
+            GenerateResetSignal;
+            Pause(190);
 
-          SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending handshake and loader image', True);
+            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending handshake and loader image', True);
 
-          {Send initial packet and wait for serial transfer time + 120 ms}
-          UpdateProgress(+1, 'Connecting');
-          if not XBee.SendUDP(TxBuf, True, False) then raise EAbort.Create('Error Connecting and Transmitting Loader Image');  {Send connect and Loader packet}
-          Pause(Length(TxBuf)*10 div InitialBaud + 120);
+            {Send initial packet and wait for serial transfer time + 120 ms}
+            UpdateProgress(+1, 'Connecting');
+            if not XBee.SendUDP(TxBuf, True, False) then                                                  {Send Connect and Loader packet}
+              raise EHardDownload.Create('Error: Can not send connection request!');
+            Pause(Length(TxBuf)*10 div InitialBaud + 120);
 
-          SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending timing templates', True);
+            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending timing templates', True);
 
-          {Prep and send timing templates, then wait for serial transfer time}
-          UpdateProgress(+1);
-          SetLength(TxBuf, XBee.MaxDataSize);
-          FillChar(TxBuf[0], XBee.MaxDataSize, $F9);
-          if not XBee.SendUDP(TxBuf, True, False) then raise EAbort.Create('Error Transmitting Timing Templates');      {Send connect and Loader packet}
-          Pause(Length(TxBuf)*10 div InitialBaud);
+            {Prep and send timing templates, then wait for serial transfer time}
+            UpdateProgress(+1);
+            SetLength(TxBuf, XBee.MaxDataSize);
+            FillChar(TxBuf[0], XBee.MaxDataSize, $F9);
+            if not XBee.SendUDP(TxBuf, True, False) then                                                  {Send timing template packet}
+              raise EHardDownload.Create('Error: Can not request connection response!');
+            Pause(Length(TxBuf)*10 div InitialBaud);
 
-          { TODO : Revisit handshake receive loop to check for all possibilities and how they are handled. }
-          repeat {Flush receive buffer and get handshake response}
-            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for handshake', True);
+            { TODO : Revisit handshake receive loop to check for all possibilities and how they are handled. }
+            repeat {Flush receive buffer and get handshake response}
 
-            if not XBee.ReceiveUDP(RxBuf, SerTimeout) then raise EAbort.Create('Error, trouble connecting');            {Receive response}
-            if Length(RxBuf) = 0 then
-              raise EAbort.Create('Error no response from Propeller')                                                   {No response?}
-            else
-              if Length(RxBuf) = 129 then
+              SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for handshake', True);
+
+              if not XBee.ReceiveUDP(RxBuf, SerTimeout) then                                              {Receive response}
+                raise ESoftDownload.Create('Error: No connection response from Propeller!');
+              if Length(RxBuf) = 129 then                                                                 {Validate response}
                 begin
-                for i := 0 to 124 do if RxBuf[i] <> RxHandshake[i] then raise EAbort.Create('Error Failed connection');                 {Validate handshake response}
+                for i := 0 to 124 do if RxBuf[i] <> RxHandshake[i] then
+                  raise EHardDownload.Create('Error: Unrecognized response - not a Propeller?');          {Validate handshake response}
                 for i := 125 to 128 do FVersion := (FVersion shr 2 and $3F) or ((RxBuf[i] and $1) shl 6) or ((RxBuf[i] and $20) shl 2); {Parse hardware version}
                 end;
-          {Repeat - Flush receive buffer and get handshake response...}
-          until Length(RxBuf) = 129;                                                                                    {Loop if not correct (to flush receive buffer of previous data)}
+            {Repeat - Flush receive buffer and get handshake response...}
+            until Length(RxBuf) = 129;                                                                    {Loop if not correct (to flush receive buffer of previous data)}
 
-          SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for RAM Checksum acknowledgement', True);
+            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for RAM Checksum acknowledgement', True);
 
-          {Receive RAM checksum response}
-          UpdateProgress(+1);
-          if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 1) then raise EAbort.Create('Error, No RAM Checksum Response');   {Receive RAM Checksum Response}
-          if RxBuf[0] <> $FE then raise EAbort.Create('RAM Checksum Error');//Error(ord(mtRAMChecksumError) + (strtoint(FComPort) shl 16));
+            {Receive RAM checksum response}
+            UpdateProgress(+1);
+            if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 1) then                        {Receive Loader RAM Checksum Response}
+              raise ESoftDownload.Create('Error: No loader checksum response!');
+            if RxBuf[0] <> $FE then
+              raise EHardDownload.Create('Error: Loader failed checksum test');
 
-          SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for "Ready" signal', True);
+            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for "Ready" signal', True);
 
-          {Now loader starts up in the Propeller; wait for loader's "ready" signal}
-          UpdateProgress(+1);
-          Acknowledged := XBee.ReceiveUDP(RxBuf, SerTimeout);                                                           {Receive loader's response}
-          if not Acknowledged or (Length(RxBuf) <> 4) then raise EAbort.Create('Error, No Ready Signal from loader');   {Verify ready signal}
-          if Cardinal(RxBuf[0]) <> PacketID then raise EAbort.Create('Error, Loader communication failure');            {Check loader's ready signal}
-        except {on - Connecting...}
-          {Error?  Repeat if possible; else re-raise the exeption to exit}
-          on E:EAbort do
-            begin
-            Acknowledged := False;
-            dec(Retry);
-            if Retry = 0 then raise Exception.Create(E.Message);
-            end;
-        end;
-      {repeat - Connecting Propeller...}
-      until Acknowledged;
+            {Now loader starts up in the Propeller; wait for loader's "ready" signal}
+            UpdateProgress(+1);
+            Acknowledged := XBee.ReceiveUDP(RxBuf, SerTimeout);                                           {Receive loader's response}
+            if not Acknowledged or (Length(RxBuf) <> 4) then                                              {Verify ready signal format}
+              raise ESoftDownload.Create('Error: No "Ready" signal from loader!');
+            if Cardinal(RxBuf[0]) <> PacketID then                                                        {Verify ready signal}
+              raise EHardDownload.Create('Error: Loader''s "Ready" signal unrecognized!');
+          except {on - Connecting...}
+            {Error?  Repeat if possible on Soft error, else re-raise the exeption to exit}
+            on E:ESoftDownload do
+              begin
+              Acknowledged := False;
+              dec(Retry);
+              if Retry = 0 then raise EHardDownload.Create(E.Message);
+              end
+            else
+              raise;
+          end;
+        {repeat - Connecting Propeller...}
+        until Acknowledged;
 
-      SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Switching to final baud rate', True);
+        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Switching to final baud rate', True);
 
-      {Switch to final baud rate}
-      UpdateProgress(+1, 'Increasing connection speed');
-      if not XBee.SetItem(xbSerialBaud, FinalBaud) then raise Exception.Create('Can not switch to final baud rate');
+        {Switch to final baud rate}
+        UpdateProgress(+1, 'Increasing connection speed');
+        if not XBee.SetItem(xbSerialBaud, FinalBaud) then
+          raise EHardDownload.Create('Error: Unable to increase connection speed!');
 
-      {Transmit packetized target application}
-      i := 0;
-      repeat {Transmit target application packets}                                     {Transmit application image}
-        TxBuffLength := 2 + Min((XBee.MaxDataSize div 4)-2, FBinSize - i);             {  Determine packet length (in longs); header + packet limit or remaining data length}
-        SetLength(TxBuf, TxBuffLength*4);                                              {  Set buffer length (Packet Length) (in longs)}
-        Move(TxBuffLength, TxBuf[0], 4);                                               {  Store Packet Size (longs)}
-        Move(PacketID, TxBuf[4], 4);                                                   {  Store Packet ID}
-        Move(FBinImage[i*4], TxBuf[2*4], (TxBuffLength-2)*4);                          {  Store section of data}
-        Retry := 4;
-        repeat {(Re)Transmit packet}                                                   {  Send application image packet, get acknowledgement, retransmit as necessary}
-          UpdateProgress(+1, 'Sending packet: ' + (TotalPackets-PacketID+1).ToString + ' of ' + TotalPackets.ToString);
+        {Transmit packetized target application}
+        i := 0;
+        repeat {Transmit target application packets}                                     {Transmit application image}
+          TxBuffLength := 2 + Min((XBee.MaxDataSize div 4)-2, FBinSize - i);             {  Determine packet length (in longs); header + packet limit or remaining data length}
+          SetLength(TxBuf, TxBuffLength*4);                                              {  Set buffer length (Packet Length) (in longs)}
+          Move(TxBuffLength, TxBuf[0], 4);                                               {  Store Packet Size (longs)}
+          Move(PacketID, TxBuf[4], 4);                                                   {  Store Packet ID}
+          Move(FBinImage[i*4], TxBuf[2*4], (TxBuffLength-2)*4);                          {  Store section of data}
+          Retry := 4;
+          repeat {(Re)Transmit packet}                                                   {  Send application image packet, get acknowledgement, retransmit as necessary}
+            UpdateProgress(+1, 'Sending packet: ' + (TotalPackets-PacketID+1).ToString + ' of ' + TotalPackets.ToString);
 
-          SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Time: ' + Time.ToString + ' Transmitting packet ' + PacketID.ToString, True);
+            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Time: ' + Time.ToString + ' Transmitting packet ' + PacketID.ToString, True);
 
-          Time := Ticks;                                                               {    Note transmit time}
-          if not XBee.SendUDP(TxBuf, True, False) then raise Exception.Create('Error Transmitting Application Image');
+            Time := Ticks;                                                               {    Note transmit time}
+            if not XBee.SendUDP(TxBuf, True, False) then
+              raise EHardDownload.Create('Error: Can not transmit application image!');
 
-          SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for packet acknowledgement', True);
+            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for packet acknowledgement', True);
 
-          Acknowledged := XBee.ReceiveUDP(RxBuf, SerTimeout) and (Length(RxBuf) = 4);  {    Wait for positive/negative acknowledgement, or timeout}
-          Time := GetTickDiff(Time, Ticks);                                            {    Calculate acknowledgement/timeout time}
-          SendDebugMessage('          - Elapsed: ' + Time.ToString + ' Minimum: ' + Trunc((TxBuffLength*4*10/FinalBaud)*1000).ToString, True);
-          dec(Retry);                                                                  {  Loop and retransmit until timely positive acknowledgement received, or retry count exhausted}
-        {Repeat - (Re)Transmit packet...}
-        { TODO : Revisit phase variance timing trap }
-          if not (Acknowledged and (Integer(RxBuf[0]) = PacketID-1)) then UpdateProgress(-1);
-        until (Acknowledged and {(Time > Trunc((TxBuffLength*4*10/FinalBaud)*1000) and} (Integer(RxBuf[0]) = PacketID-1)) or (Retry = 0);
-        if Retry = 0 then raise Exception.Create('Error, loader connection lost.');    {  No acknowledgement received? Error}
-        inc(i, TxBuffLength-2);                                                        {  Increment image index}
-        dec(PacketID);                                                                 {  Decrement Packet ID (to next packet)}
-      {repeat - Transmit target application packets...}  
-      until PacketID = 0;                                                              {Loop until done}
+            Acknowledged := XBee.ReceiveUDP(RxBuf, SerTimeout) and (Length(RxBuf) = 4);  {    Wait for positive/negative acknowledgement, or timeout}
+            Time := GetTickDiff(Time, Ticks);                                            {    Calculate acknowledgement/timeout time}
+            SendDebugMessage('          - Elapsed: ' + Time.ToString + ' Minimum: ' + Trunc((TxBuffLength*4*10/FinalBaud)*1000).ToString, True);
+            dec(Retry);                                                                  {  Loop and retransmit until timely positive acknowledgement received, or retry count exhausted}
+          {Repeat - (Re)Transmit packet...}
+          { TODO : Revisit phase variance timing trap }
+            if not (Acknowledged and (Integer(RxBuf[0]) = PacketID-1)) then UpdateProgress(-1);
+          until (Acknowledged and {(Time > Trunc((TxBuffLength*4*10/FinalBaud)*1000) and} (Integer(RxBuf[0]) = PacketID-1)) or (Retry = 0);
+          if Retry = 0 then
+            raise EHardDownload.Create('Error: connection lost!');                       {  No acknowledgement received? Error}
+          inc(i, TxBuffLength-2);                                                        {  Increment image index}
+          dec(PacketID);                                                                 {  Decrement Packet ID (to next packet)}
+        {repeat - Transmit target application packets...}  
+        until PacketID = 0;                                                              {Loop until done}
 
-      {Receive RAM checksum pass/fail}
+        {Receive RAM checksum pass/fail}
 
-      SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for RAM checksum', True);
+        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for RAM checksum', True);
 
-      { TODO : Think about possible need for retransmission of RAM checksum here. }
-      UpdateProgress(+1, 'Verifying RAM');
-      if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 1) then raise Exception.Create('Error, Loader communication failure 2');
-      if Cardinal(RxBuf[0]) <> 0 then raise Exception.Create('Error: RAM Checksum Error');
+        { TODO : Think about possible need for retransmission of RAM checksum here. }
+        UpdateProgress(+1, 'Verifying RAM');
+        if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 1) then
+          raise EHardDownload.Create('Error: No final response!');
+        if Cardinal(RxBuf[0]) <> 0 then
+          raise EHardDownload.Create('Error: RAM Checksum Error!');
 
-      UpdateProgress(+1, 'Success');
+        UpdateProgress(+1, 'Success');
 
-//    if XBee.ConnectTCP then
-//      begin
-//      try
+  //    if XBee.ConnectTCP then
+  //      begin
+  //      try
 
-//!!        SetLength(TxBuf, 1+250+250+8);
-//!!        TxBuffLength := 0;
-//!!        AppendByte($F9);
-//!!        for i := 1 to 250 do AppendByte(TxHandshake[i] or $FE);                     {Note "or $FE" encodes 1 handshake bit per transmitted byte}
-//!!        for i := 1 to 250 + 8 do AppendByte($F9);
+  //!!        SetLength(TxBuf, 1+250+250+8);
+  //!!        TxBuffLength := 0;
+  //!!        AppendByte($F9);
+  //!!        for i := 1 to 250 do AppendByte(TxHandshake[i] or $FE);                     {Note "or $FE" encodes 1 handshake bit per transmitted byte}
+  //!!        for i := 1 to 250 + 8 do AppendByte($F9);
 
-//!!        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Connecting to Propeller');
+  //!!        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Connecting to Propeller');
 
-//        XBee.ReceiveUDP(RxBuf, 0, 1000);
+  //        XBee.ReceiveUDP(RxBuf, 0, 1000);
 
-//        GenerateResetSignal;
-//        XBee.SetItem(xbData, $0000);
-//        XBee.Send(TxBuf);
-//      finally
-//        XBee.DisconnectTCP;
-//      end;
-//      end;
+  //        GenerateResetSignal;
+  //        XBee.SetItem(xbData, $0000);
+  //        XBee.Send(TxBuf);
+  //      finally
+  //        XBee.DisconnectTCP;
+  //      end;
+  //      end;
 
-//!!      {Receive connect string}
-//!!      RxCount := 0;
-//!!      i := 1;
-//!!      repeat                                                                      {Loop}
-//!!        r := ReceiveBit(False, 100, False);                                       {  Receive encoded bit}
-//!!        inc(RxCount);
-//!!        if r = RxHandshake[i] then                                                {  Bits match?}
-//!!          inc(i)                                                                  {    Ready to match next RxHandshake bit}
-//!!        else
-//!!          begin                                                                   {  Else (bits don't match)}
-//!!          dec(FRxBuffStart, (i-1)*ord(r < 2));                                    {    Proper encoding (r < 2)?; start with 2nd bit checked and try again. Improper encoding (r > 1)?; may be junk prior to RxHandshake stream, ignore junk}
-//!!          i := 1;                                                                 {    Prep to match first RxHandshake bit}
-//!!          if RxCount > RxBuffSize then showmessage('Hardware Lost');              {    No RxHandshake in stream?  Time out; error}
-//!!          end;
-//!!      until (i > 250);                                                            {Loop until all RxHandshake bits received}
-//!!      {Receive version}
-//!!      for i := 1 to 8 do FVersion := FVersion shr 1 and $7F or ReceiveBit(False, 50) shl 7;
-//!!      if FVersionMode then
-//!!        begin {If version mode, send shutdown command and reset hardware to reboot}
-//!!        SetLength(TxBuf, 11);
-//!!        TxBuffLength := 0;
-//!!        AppendLong(0);
-//!!        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending shutdown command');
-//!!        GenerateResetSignal;
-//!!//        CloseComm;
-//!!        end
-//!!      else
-//!!        begin
-//!!        {Send download command immediately}
-//!!        SetLength(TxBuf, 11);
-//!!        TxBuffLength := 0;
-//!!        AppendLong(FDownloadMode);
-//!!        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Download Command');
-//!!        {If download command 1-3, do the following}
-//!!        if FDownloadMode > 0 then
-//!!          begin
-//!!  //        {Update GUI - Loading RAM}
-//!!  ///        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtLoadingRAM));
-//!!          {Send count and longs}
-//!!          SetLength(TxBuf, (1+FBinSize)*11);
-//!!          TxBuffLength := 0;
-//!!          AppendLong(FBinSize);
-//!!          for i := 0 to FBinSize-1 do
-//!!            begin
-//!!  //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgress));
-//!!             AppendLong(PIntegerArray(FBinImage)[i]);
-//!!             end;
-//!!          if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Application Image');
-  //        {Update GUI - Verifying RAM}
-  //        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingRAM));
+  //!!      {Receive connect string}
+  //!!      RxCount := 0;
+  //!!      i := 1;
+  //!!      repeat                                                                      {Loop}
+  //!!        r := ReceiveBit(False, 100, False);                                       {  Receive encoded bit}
+  //!!        inc(RxCount);
+  //!!        if r = RxHandshake[i] then                                                {  Bits match?}
+  //!!          inc(i)                                                                  {    Ready to match next RxHandshake bit}
+  //!!        else
+  //!!          begin                                                                   {  Else (bits don't match)}
+  //!!          dec(FRxBuffStart, (i-1)*ord(r < 2));                                    {    Proper encoding (r < 2)?; start with 2nd bit checked and try again. Improper encoding (r > 1)?; may be junk prior to RxHandshake stream, ignore junk}
+  //!!          i := 1;                                                                 {    Prep to match first RxHandshake bit}
+  //!!          if RxCount > RxBuffSize then showmessage('Hardware Lost');              {    No RxHandshake in stream?  Time out; error}
+  //!!          end;
+  //!!      until (i > 250);                                                            {Loop until all RxHandshake bits received}
+  //!!      {Receive version}
+  //!!      for i := 1 to 8 do FVersion := FVersion shr 1 and $7F or ReceiveBit(False, 50) shl 7;
+  //!!      if FVersionMode then
+  //!!        begin {If version mode, send shutdown command and reset hardware to reboot}
+  //!!        SetLength(TxBuf, 11);
+  //!!        TxBuffLength := 0;
+  //!!        AppendLong(0);
+  //!!        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending shutdown command');
+  //!!        GenerateResetSignal;
+  //!!//        CloseComm;
+  //!!        end
+  //!!      else
+  //!!        begin
+  //!!        {Send download command immediately}
+  //!!        SetLength(TxBuf, 11);
+  //!!        TxBuffLength := 0;
+  //!!        AppendLong(FDownloadMode);
+  //!!        if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Download Command');
+  //!!        {If download command 1-3, do the following}
+  //!!        if FDownloadMode > 0 then
+  //!!          begin
+  //!!  //        {Update GUI - Loading RAM}
+  //!!  ///        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtLoadingRAM));
+  //!!          {Send count and longs}
+  //!!          SetLength(TxBuf, (1+FBinSize)*11);
+  //!!          TxBuffLength := 0;
+  //!!          AppendLong(FBinSize);
+  //!!          for i := 0 to FBinSize-1 do
+  //!!            begin
+  //!!  //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgress));
+  //!!             AppendLong(PIntegerArray(FBinImage)[i]);
+  //!!             end;
+  //!!          if not XBee.SendUDP(TxBuf) then raise Exception.Create('Error Sending Application Image');
+    //        {Update GUI - Verifying RAM}
+    //        QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingRAM));
 
-          {Receive ram checksum pass/fail}
-//!!          if ReceiveBit(True, 2500) = 1 then raise Exception.Create('RAM Checksum Error');//Error(ord(mtRAMChecksumError) + (strtoint(FComPort) shl 16));
-          {If download command 2-3, do the following}
-//!!          if FDownloadMode > 1 then
-//!!            begin
-  //          {Update GUI - Programming EEPROM}
-  //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgrammingEEPROM));
-            {Receive eeprom program pass/fail}
-//!!            if ReceiveBit(True, 5000) = 1 then raise Exception.Create('EEPROM Programming Error');//Error(ord(mtEEPROMProgrammingError) + (strtoint(FComPort) shl 16));
-  //          {Update GUI - Verifying EEPROM}
-  //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingEEPROM));
-            {Receive eeprom verify pass/fail}
-//!!            if ReceiveBit(True, 2500) = 1 then raise Exception.Create('EEPROM Verify Error');//Error(ord(mtEEPROMVerifyError) + (strtoint(FComPort) shl 16));
-//!!            end;
-//!!          end;
-  //      CloseComm;
-//!!        end;
-    finally {UDP Connected}
-      XBee.DisconnectSerialUDP;
+            {Receive ram checksum pass/fail}
+  //!!          if ReceiveBit(True, 2500) = 1 then raise Exception.Create('RAM Checksum Error');//Error(ord(mtRAMChecksumError) + (strtoint(FComPort) shl 16));
+            {If download command 2-3, do the following}
+  //!!          if FDownloadMode > 1 then
+  //!!            begin
+    //          {Update GUI - Programming EEPROM}
+    //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgrammingEEPROM));
+              {Receive eeprom program pass/fail}
+  //!!            if ReceiveBit(True, 5000) = 1 then raise Exception.Create('EEPROM Programming Error');//Error(ord(mtEEPROMProgrammingError) + (strtoint(FComPort) shl 16));
+    //          {Update GUI - Verifying EEPROM}
+    //          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtVerifyingEEPROM));
+              {Receive eeprom verify pass/fail}
+  //!!            if ReceiveBit(True, 2500) = 1 then raise Exception.Create('EEPROM Verify Error');//Error(ord(mtEEPROMVerifyError) + (strtoint(FComPort) shl 16));
+  //!!            end;
+  //!!          end;
+    //      CloseComm;
+  //!!        end;
+      finally {UDP Connected}
+        XBee.DisconnectSerialUDP;
+      end;
+    finally {Reserved Memory}
+      freemem(LoaderImage);
+      freemem(LoaderStream);
+
+      SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Exiting', True);
+      Pause(500);
+      UpdateProgress(0, '', False);
+
+      TransmitButton.Enabled := True;
+
+  //    XBee.DisconnectTCP;
     end;
-  finally {Reserved Memory}
-    freemem(LoaderImage);
-    freemem(LoaderStream);
-
-    SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Exiting', True);
-    Pause(250);
-    UpdateProgress(0, '', False);
-
-//    XBee.DisconnectTCP;
+  except {on - Handle download errors}
+    on E:EDownload do ShowMessage(E.Message);
   end;
 end;
 
@@ -763,11 +790,9 @@ var
     begin
       {Raise exception if file truncated}
       if (ImageSize < 16) or (ImageSize < PWordArray(Buffer)[4]) then
-//        raise EFileCorrupt.Create(ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' is truncated or is not a Propeller Application' + ifthen(Filename <> '',' file', '') + '!'+#$D#$A#$D#$A+ifthen(Filename <> '', 'File', 'Image') + ' size is less than 16 bytes or is less than word 4 (VarBase) indicates.');
-        raise Exception.Create(ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' is truncated or is not a Propeller Application' + ifthen(Filename <> '',' file', '') + '!'+#$D#$A#$D#$A+ifthen(Filename <> '', 'File', 'Image') + ' size is less than 16 bytes or is less than word 4 (VarBase) indicates.');
+        raise EFileCorrupt.Create(ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' is truncated or is not a Propeller Application' + ifthen(Filename <> '',' file', '') + '!'+#$D#$A#$D#$A+ifthen(Filename <> '', 'File', 'Image') + ' size is less than 16 bytes or is less than word 4 (VarBase) indicates.');
       if (PWordArray(Buffer)[3] <> $0010) then
-//        raise EFileCorrupt.Create('Initialization code invalid!  ' + ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' is corrupt or is not a Propeller Application' + ifthen(Filename <> '',' file', '') +'!'+#$D#$A#$D#$A+'Word 3 (CodeBase) must be $0010.');
-        raise Exception.Create('Initialization code invalid!  ' + ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' is corrupt or is not a Propeller Application' + ifthen(Filename <> '',' file', '') +'!'+#$D#$A#$D#$A+'Word 3 (CodeBase) must be $0010.');
+        raise EFileCorrupt.Create('Initialization code invalid!  ' + ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' is corrupt or is not a Propeller Application' + ifthen(Filename <> '',' file', '') +'!'+#$D#$A#$D#$A+'Word 3 (CodeBase) must be $0010.');
       {Write initial call frame}
 //      copymemory(@Buffer[min($7FF8, max($0010, PWordArray(Buffer)[5] - 8))], @InitCallFrame[0], 8);
       move(InitCallFrame[0], Buffer[min($7FF8, max($0010, PWordArray(Buffer)[5] - 8))], 8);
@@ -775,8 +800,7 @@ var
       CheckSum := 0;
       for Idx := 0 to ImageLimit-1 do CheckSum := CheckSum + Buffer[Idx];
       if CheckSum <> 0 then
-//        raise EFileCorrupt.Create('Checksum Error!  ' + ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' is corrupt or is not a Propeller Application' + ifthen(Filename <> '',' file', '') +'!'+#$D#$A#$D#$A+'Byte 5 (Checksum) is incorrect.');
-        raise Exception.Create('Checksum Error!  ' + ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' is corrupt or is not a Propeller Application' + ifthen(Filename <> '',' file', '') +'!'+#$D#$A#$D#$A+'Byte 5 (Checksum) is incorrect.');
+        raise EFileCorrupt.Create('Checksum Error!  ' + ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' is corrupt or is not a Propeller Application' + ifthen(Filename <> '',' file', '') +'!'+#$D#$A#$D#$A+'Byte 5 (Checksum) is incorrect.');
       {Check for extra data beyond code}
       Idx := PWordArray(Buffer)[4];
       while (Idx < ImageSize) and ((Buffer[Idx] = 0) or ((Idx >= PWordArray(Buffer)[5] - 8) and (Idx < PWordArray(Buffer)[5]) and (Buffer[Idx] = InitCallFrame[Idx-(PWordArray(Buffer)[5]-8)]))) do inc(Idx);
@@ -787,7 +811,7 @@ var
 //        {$ENDIF}
 //          begin
 //          MessageBeep(MB_ICONWARNING);
-          raise Exception.Create(ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' contains data after code space' + {$IFNDEF ISLIB}' that was not generated by the Propeller Tool' +{$ENDIF} '.  This data will not be displayed or downloaded.');
+          raise EFileCorrupt.Create(ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' contains data after code space' + {$IFNDEF ISLIB}' that was not generated by the Propeller Tool' +{$ENDIF} '.  This data will not be displayed or downloaded.');
 //          messagedlg(ifthen(Filename <> '', 'File '''+Filename+'''', 'Image') + ' contains data after code space' + {$IFNDEF ISLIB}' that was not generated by the Propeller Tool'{$ENDIF}+ '.  This data will not be displayed or downloaded.', mtWarning, [mbOK], 0);
 //          end;
         end;
@@ -839,12 +863,14 @@ begin
     FBinSize := ImageSize div 4;
     {Download image to Propeller chip (use VBase (word 4) value as the 'image long-count size')}
 //    Propeller.Download(Buffer, PWordArray(Buffer)[4] div 4, DownloadCmd);
+    TransmitButton.Enabled := True;
   except
     on E: EFileCorrupt do
       begin {Image corrupt, show error and exit}
 //      if (CPrefs[GUIDisplay].IValue in [0, 2]) then
 //        begin
-          raise Exception.Create(E.Message);
+          TransmitButton.Enabled := False;
+          ShowMessage(E.Message);
 //        ErrorMsg('052-'+E.Message);                     {Dialog display needed?  Show error.}
 //        end
 //      else
@@ -875,6 +901,7 @@ begin
   XBee.RemoteSerialIPPort := XBeeList[PCPortCombo.Selected.Index].IPPort;
   NodeID.Text := XBeeList[PCPortCombo.Selected.Index].NodeID;
   MacAddr.Text := FormatMACAddr(XBeeList[PCPortCombo.Selected.Index].MacAddrHigh, XBeeList[PCPortCombo.Selected.Index].MacAddrLow);
+  ButtonLayout.Enabled := True;
 end;
 
 

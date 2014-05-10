@@ -14,22 +14,28 @@ THINGS TO DO
 
 * Check if necessary to have 255 (blank) between 1st and 2nd handshake stream
 * Make better timeout method
+  * Test as a separate app
 
+* Create soft, hard, and fatal error cases and handle them properly
 * Ensure proper delay after handshake and image
 * Finalize RAM Checksum response sequence
 * If host receives no "Ready" signal, start image transmission anyway as there's a good chance of recovery
 * If host receives no final ACK, handle gracefully
 * Determine why I can't connect from host machine
-
+  * Seems the firewall may have prevented it at first
+  * The IPDestination feature is the problem... need to resolve this (right now it's hard-coded)
+* Enhance so that host can set target bit period according to default/user-specified crystal speed
+  * May need to set clock speed value LONG[0] and clock mode WORD[?]
+* Make exception error reporting dialog
 
 * Download Method
   * Loader Image
-    * Host sets target bit period value in loader image (before download) according to default/user-specified crystal speed
-      * May need to set clock speed value LONG[0] and clock mode WORD[?]
     * Should support initial and target 9,600/19,200/38,400/57,600/115,200/230,400/460,800/921,600/1,000,000/1,500,000/2,000,000/3,000,000 baud rates
+
 
       * Loader acknowledges Application Image (positively or negatively); this is a RAM Checksum response
       * Loader acknowledges EEPROM write
+
   * Increase final baud rate to fastest possible
     * Test extensively
     
@@ -71,6 +77,9 @@ THINGS DONE
 * Determine how to find local addresses and subnet masks
   * Local addresses are findable, but subnet masks are curiously hidden
 * Add progress bar
+* Prevent clicking on Transmit during a transmit process
+* Make buttons active only during valid conditions
+
 
 * First Try:
   * Dropped UDP Packets
@@ -81,6 +90,8 @@ THINGS DONE
   * Loader Image
     * Full Propeller Application Written in Propeller Assembly
       * May need to be last values in image for implementation simplicity
+    * Host sets target bit period value in loader image (before download) according to default/user-specified crystal speed
+      * May need to set clock speed value LONG[0] and clock mode WORD[?]
 
     * Handshake:
       * Uses standard bit encoding (instead of Propeller bit encoding)
