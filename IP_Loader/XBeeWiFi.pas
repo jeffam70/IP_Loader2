@@ -163,13 +163,13 @@ type
     {XBee Application Service buffer transmit methods}
     procedure PrepareAppBuffer(Command: xbCommand; ParamStr: String = ''; ParamNum: Int64 = -1; ParamData: TIdBytes = nil);
     function  TransmitAppUDP(ExpectMultiple: Boolean = False; AutoRetry: Boolean = True): Boolean;
-    procedure Pause(Duration: Integer);
   end;
 
   {Non-object functions and procedures}
   function FormatIPAddr(Addr: Cardinal): String;
   function FormatMACAddr(AddrHigh, AddrLow: Cardinal): String;
-  function CheckTime(Delay: Cardinal = 0): Cardinal;
+  procedure Pause(Duration: Cardinal);
+  function CheckTime(Duration: Cardinal = 0): Cardinal;
 
 const
   {Network Header Metrics}
@@ -558,7 +558,7 @@ begin
   until (Count > 0) or (CheckTime = 0);
   SetLength(Data, Count);                                                                                    {Receive data and resize buffer to exactly fit it}
   Result := Count > 0;
-  SendDebugMessage('Result: ' + ifthen(Result, 'True', 'False') + ' Count: ' + Count.ToString, True);
+  SendDebugMessage('          - ' + ifthen(Result, 'Received ' + Count.ToString + ' byte(s)', 'No response!'), True);
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -790,23 +790,6 @@ begin
 end;
 
 {----------------------------------------------------------------------------------------------------}
-
-procedure TXBeeWiFi.Pause(Duration: Integer);
-{Pause executed for Duration milliseconds, as close to the desired time as possible accomidating for process start variances}
-var
-  STime, ETime : Integer;
-begin
-  if Duration < 1 then exit;
-  STime := Ticks;                                      {Get start time}
-  ETime := STime;                                      {Prep for first pause}
-  repeat
-//    SendDebugMessage(inttostr(Duration - GetTickDiff(STime, ETime)) + ' more...', True);
-    Sleep(Duration - GetTickDiff(STime, ETime));       {Pause for remaining time}
-    ETime := Ticks;                                    {Check current time}
-  until Duration - GetTickDiff(STime, ETime) < 2;      {If pause was too short, try again}
-end;
-
-{----------------------------------------------------------------------------------------------------}
 {----------------------------------------------------------------------------------------------------}
 {-------------------------------- Non-Object Functions and Procedure --------------------------------}
 {----------------------------------------------------------------------------------------------------}
@@ -828,16 +811,25 @@ end;
 
 {----------------------------------------------------------------------------------------------------}
 
-function CheckTime(Delay: Cardinal = 0): Cardinal;
-{Mark time (if Delay > 0) and note if last time Delay has passed (if Delay = 0).
- Returns time left to complete previous Delay, or 0 if time delay has already passed.}
+procedure Pause(Duration: Cardinal);
+{Pause for Duration period.  This method ensures that pause is at least Duration milliseconds long, unlike the typical sleep API calls.}
 begin
-  if Delay > 0 then
-    begin {New delay; note time and delay value}
+  CheckTime(Duration);
+  repeat IndySleep(CheckTime) until CheckTime = 0;
+end;
+
+{----------------------------------------------------------------------------------------------------}
+
+function CheckTime(Duration: Cardinal = 0): Cardinal;
+{Mark time (if Duration > 0) and note if last time Duration has passed (if Duration = 0).
+ Returns time left to complete previous Duration, or 0 if time Duration has already passed.}
+begin
+  if Duration > 0 then
+    begin {New delay; note time and duration value}
     ctTime := Ticks;
-    ctDelay := Delay;
+    ctDelay := Duration;
     end;
-  {Calculate and return difference between current time and last delay}
+  {Calculate and return difference between current time and last duration}
   Result := Max(0, Integer(ctDelay - GetTickDiff(ctTime, Ticks)));
 end;
 

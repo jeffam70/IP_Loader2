@@ -509,13 +509,13 @@ begin
         try {Connecting...}
           {(Enforce XBee Configuration and...) Generate reset signal, then wait for serial transfer window}
           GenerateResetSignal;                    
-          IndySleep(190);
+          Pause(190);
 
           SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending handshake and loader image', True);
 
           {Send initial packet and wait for serial transfer time + 120 ms}
           if not XBee.SendUDP(TxBuf, True, False) then raise EAbort.Create('Error Connecting and Transmitting Loader Image');  {Send connect and Loader packet}
-          IndySleep(Length(TxBuf)*10 div InitialBaud + 120);
+          Pause(Length(TxBuf)*10 div InitialBaud + 120);
 
           SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending timing templates', True);
 
@@ -523,7 +523,7 @@ begin
           SetLength(TxBuf, XBee.MaxDataSize);
           FillChar(TxBuf[0], XBee.MaxDataSize, $F9);
           if not XBee.SendUDP(TxBuf, True, False) then raise EAbort.Create('Error Transmitting Timing Templates');      {Send connect and Loader packet}
-          IndySleep(Length(TxBuf)*10 div InitialBaud);
+          Pause(Length(TxBuf)*10 div InitialBaud);
 
           { TODO : Revisit handshake receive loop to check for all possibilities and how they are handled. }
           repeat {Flush receive buffer and get handshake response}
@@ -590,11 +590,11 @@ begin
 
           Acknowledged := XBee.ReceiveUDP(RxBuf, SerTimeout) and (Length(RxBuf) = 4);  {    Wait for positive/negative acknowledgement, or timeout}
           Time := GetTickDiff(Time, Ticks);                                            {    Calculate acknowledgement/timeout time}
-          SendDebugMessage('Time: ' + Time.ToString + ' Min: ' + ((TxBuffLength*4*10/FinalBaud)*1000).ToString, True);
+          SendDebugMessage('          - Time: ' + Time.ToString + ' Min: ' + Trunc((TxBuffLength*4*10/FinalBaud)*1000).ToString, True);
           dec(Retry);                                                                  {  Loop and retransmit until timely positive acknowledgement received, or retry count exhausted}
         {Repeat - (Re)Transmit packet...}  
         { TODO : Revisit phase variance timing trap }
-        until (Acknowledged and {(Time > (TxBuffLength*4*10/FinalBaud)*1000) and} (Integer(RxBuf[0]) = PacketID-1)) or (Retry = 0);
+        until (Acknowledged and {(Time > Trunc((TxBuffLength*4*10/FinalBaud)*1000) and} (Integer(RxBuf[0]) = PacketID-1)) or (Retry = 0);
         if Retry = 0 then raise Exception.Create('Error, loader connection lost.');    {  No acknowledgement received? Error}
         inc(i, TxBuffLength-2);                                                        {  Increment image index}
         dec(PacketID);                                                                 {  Decrement Packet ID (to next packet)}
