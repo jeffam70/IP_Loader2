@@ -148,4 +148,24 @@ object Form1: TForm1
       Width = 161.000000000000000000
     end
   end
+  object Progress: TProgressBar
+    Height = 20.000000000000000000
+    Orientation = orHorizontal
+    Position.X = 126.000000000000000000
+    Position.Y = 384.000000000000000000
+    Visible = False
+    Width = 361.000000000000000000
+    object ProgressLabel: TLabel
+      Height = 17.000000000000000000
+      Position.Y = -21.000000000000000000
+      Text = 'Download Progress:'
+      Width = 120.000000000000000000
+    end
+    object StatusLabel: TLabel
+      Height = 17.000000000000000000
+      Position.X = 112.000000000000000000
+      Position.Y = -21.000000000000000000
+      Width = 249.000000000000000000
+    end
+  end
 end

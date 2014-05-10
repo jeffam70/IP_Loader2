@@ -39,6 +39,9 @@ type
     LoadButton: TButton;
     BroadcastAddress: TEdit;
     Label1: TLabel;
+    Progress: TProgressBar;
+    ProgressLabel: TLabel;
+    StatusLabel: TLabel;
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure IdentifyButtonClick(Sender: TObject);
@@ -58,6 +61,7 @@ type
   end;
 
   EFileCorrupt = class(Exception); {File Corrupt exception}
+
 
 
 var
@@ -190,15 +194,17 @@ var
   LoaderStream     : PByteArray;                         {Loader Download Stream (Generated from Loader Image)}
   LoaderStreamSize : Integer;                            {Size of Loader Download Stream}
 
+  TotalPackets     : Integer;                            {Total number of image packets}
   PacketID         : Integer;                            {ID of packet transmitted}
   Retry            : Integer;                            {Retry counter}
   Time             : Int64;
   Acknowledged     : Boolean;                            {True = positive/negative acknowledgement received from loader, False = no response from loader}
 
   STime            : Int64;
-//  Str              : TStringList;
 
 const
+  pReset = Integer.MinValue;
+
   {After reset, the Propeller's exact clock rate is not known by either the host or the Propeller itself, so communication with the Propeller takes place based on
    a host-transmitted timing template that the Propeller uses to read the stream and generate the responses.  The host first transmits the 2-bit timing template,
    then transmits a 250-bit Tx handshake, followed by 250 timing templates (one for each Rx handshake bit expected) which the Propeller uses to properly transmit
@@ -362,87 +368,47 @@ const
         end;
     end;
 
-    {----------------}
+   {----------------}
 
-//!!    function ReceiveBit(Template: Boolean; Timeout: Int64; Connected: Boolean = True): Byte;
-    {Receive bit-sized response (0 or 1) from Propeller, optionally transmitting timing template if necessary.
-     Template:  True: if no response, transmit timing template.
-                False: if no response, fail.
-     Connected: True: established communication already.
-                False: haven't established communication yet.}
-//!!    var
-//!!      StartTime  : Int64;
-//!!      Read       : Boolean; {True = data already read before ReadFile returned; False = data read in progress}
-//!!      WaitResult : Cardinal;
+   procedure UpdateProgress(Offset: Integer; Status: String = ''; Show: Boolean = True);
+   {Update progress bar.}
+   begin
+     if Offset > 0 then
+       begin
+       if Progress.Tag = 0 then
+         begin
+         Progress.Opacity := 1;
+         Progress.Value := Progress.Value + Offset;
+         end
+       else
+         Progress.Tag := Min(0, Progress.Tag + Offset);
+       end
+     else
+       begin
+       if Offset = Integer.MinValue then Offset := -Trunc(Progress.Value);
+       if Offset < 0 then
+         begin
+         Progress.Tag := Offset;
+         Progress.Opacity := 0.5;
+         end;
+       end;
+     if Status <> '' then StatusLabel.Text := Status;
+     Progress.Visible := Show;
+     Application.ProcessMessages;
+     SendDebugMessage('Progress Updated: ' + Trunc(Progress.Value).ToString + ' of ' + Trunc(Progress.Max).ToString, True);
+   end;
 
-        {----------------}
+   {----------------}
 
-//!!        procedure ReadError;
-//!!        {Notify of read error.  This is a non-fatal error if FAbortMode = False, or is a fatal error if FAbortMode = True}
-//!!        begin
-//!!          raise exception.Create('Some kind of Read Error occurred');
-//          Error(ord(mtPortUnreadable)*ord(not FAbortMode) + ord(mtNoRead)*ord(FAbortMode) + (strtoint(FComPort) shl 16));
-//!!        end;
-
-        {----------------}
-
-//!!        function GetTime: Int64;
-        {Return millisecond clock count.  This will be computed from either the high-performance system counter, if one exists,
-        or the standard clock, if the high-performance system counter doesn't exist.}
-//!!        begin
-//          if FHPCFreq > 0 then
-//            begin {High performance counter exists, use it}
-//            QueryPerformanceCounter(Result);
-//            Result := Result div FHPCFreq;
-//            end
-//          else    {High performance counter does not exist, use standard}
-{ TODO : Replace GetTime with a multi-platform solution. }
-//!!            Result := System.Classes.TThread.GetTickCount;
-//!!        end;
-
-        {----------------}
-
-//!!    begin
-//      FCommOverlap.Offset := 0;
-//      FCommOverlap.OffsetHigh := 0;
-//!!      StartTime := GetTime;
-//!!      repeat                                                                                        {Loop...}
-//!!        if FRxBuffStart = FRxBuffEnd then                                                             {Buffer empty, check Rx}
-//!!          begin
-//!!          FRxBuffStart := 0;                                                                            {Reset start}
-//          QueueUserAPC(@UpdateSerialStatus, FCallerThread, ord(mtProgress));                            {Update GUI - Progressing (receiving bit)}
-//!!          if Template then                                                                              {Need echo byte?}
-//!!            begin
-//!!            SetLength(TxBuf, 1);
-//!!            TxBuffLength := 0;
-//!!            AppendByte($F9);
-//!!            XBee.SendUDP(TxBuf, True, False);                                                             {Transmit template byte}
-//!!            sleep(25);                                                                                    {Delay to give plenty of round-trip time}
-//!!            end;
-//!!          Read := XBee.ReceiveUDP(RxBuf, 1);
-//          Read := XBee.ReceiveTCP(RxBuf, 2000);
-//!!          RxBuffSize := length(RxBuf);
-//!!          FRxBuffEnd := RxBuffSize;
-//!!          if not Read then                                                                              {Data not entirely read yet?}
-//!!            begin
-//            if GetLastError <> ERROR_IO_PENDING then ReadError;                                           {Error, unable to read}
-//            WaitResult := waitforsingleobject(FCommIOEvent, 1000);                                        {Wait for completion, or 1 second, whichever comes first}
-//            if WaitResult = WAIT_FAILED then Error(ord(mtWaitFailed));
-//            if WaitResult = WAIT_TIMEOUT then ReadError;                                                  {Error, timed-out on read of PC hardware}
-//              raise Exception.Create('Error: Timed-out on read.');
-//!!            end;
-//          if not GetOverlappedResult(FCommHandle, FCommOverlap, FRxBuffEnd, True) then ReadError;       {Get count of received bytes; error if necessary}
-//!!          end;
-//!!        if FRxBuffStart <> FRxBuffEnd then                                                            {Buffer has data, parse it}
-//!!          begin
-//!!          Result := RxBuf[FRxBuffStart] - $FE;                                                        {Translate properly-formed data to 0 or 1; improper data will be > 1}
-//!!          Inc(FRxBuffStart);
-//!!          if (Result and $FE = 0) or (not Connected) then Exit;                                         {Result properly-formed? (or ill-formed but not yet connected); exit, returning Result}
-//!!          raise Exception.Create('Hardware Lost');                                                     {Otherwise, error; lost communication}
-//!!          end;
-//!!      until GetTime - StartTime > Timeout;                                                          {Loop back until time-out}
-//!!      raise Exception.Create('Hardware Lost');                                                      {Timed-out? Error; lost communication}
-//!!    end;
+   procedure InitializeProgress(MaxIndex: Cardinal);
+   {Initialize Progress Bar}
+   begin
+     Progress.Value := 0;
+     Progress.Max := MaxIndex;
+     Progress.Tag := 0;
+     StatusLabel.Text := '';
+     UpdateProgress(0);
+   end;
 
    {----------------}
 
@@ -465,7 +431,10 @@ begin
   
     {Determine number of required packets for target application image; value becomes first Packet ID}
     SetRoundMode(rmUp);
-    PacketID := Round(FBinSize*4 / (XBee.MaxDataSize-4*2));                                                   {Calculate required number of packets for target image; binary image size (in bytes) / (max packet size - packet header)}
+    TotalPackets := Round(FBinSize*4 / (XBee.MaxDataSize-4*2));                                               {Calculate required number of packets for target image; binary image size (in bytes) / (max packet size - packet header)}
+    PacketID := TotalPackets;
+    {Initialize Progress Bar to proper size}
+    InitializeProgress(7 + TotalPackets);
     {Prepare Loader Image}
     Move(RawLoaderImage, LoaderImage[0], RawLoaderAppSize*4);                                                 {Copy raw loader image to LoaderImage (for adjustments and processing)}
     {Clear checksum}
@@ -494,6 +463,7 @@ begin
     try {UDP Connected}
       Retry := 3;
       repeat {Connecting Propeller}                                                                     {Try connecting up to 3 times}
+        UpdateProgress(pReset);
 
         SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - **** CONNECTING ***', True);
       
@@ -508,18 +478,21 @@ begin
 
         try {Connecting...}
           {(Enforce XBee Configuration and...) Generate reset signal, then wait for serial transfer window}
-          GenerateResetSignal;                    
+          UpdateProgress(0, 'Generating reset signal');
+          GenerateResetSignal;
           Pause(190);
 
           SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending handshake and loader image', True);
 
           {Send initial packet and wait for serial transfer time + 120 ms}
+          UpdateProgress(+1, 'Connecting');
           if not XBee.SendUDP(TxBuf, True, False) then raise EAbort.Create('Error Connecting and Transmitting Loader Image');  {Send connect and Loader packet}
           Pause(Length(TxBuf)*10 div InitialBaud + 120);
 
           SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending timing templates', True);
 
           {Prep and send timing templates, then wait for serial transfer time}
+          UpdateProgress(+1);
           SetLength(TxBuf, XBee.MaxDataSize);
           FillChar(TxBuf[0], XBee.MaxDataSize, $F9);
           if not XBee.SendUDP(TxBuf, True, False) then raise EAbort.Create('Error Transmitting Timing Templates');      {Send connect and Loader packet}
@@ -538,18 +511,20 @@ begin
                 for i := 0 to 124 do if RxBuf[i] <> RxHandshake[i] then raise EAbort.Create('Error Failed connection');                 {Validate handshake response}
                 for i := 125 to 128 do FVersion := (FVersion shr 2 and $3F) or ((RxBuf[i] and $1) shl 6) or ((RxBuf[i] and $20) shl 2); {Parse hardware version}
                 end;
-          {Repeat - Flush receive buffer and get handshake response...}     
+          {Repeat - Flush receive buffer and get handshake response...}
           until Length(RxBuf) = 129;                                                                                    {Loop if not correct (to flush receive buffer of previous data)}
 
           SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for RAM Checksum acknowledgement', True);
 
           {Receive RAM checksum response}
+          UpdateProgress(+1);
           if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 1) then raise EAbort.Create('Error, No RAM Checksum Response');   {Receive RAM Checksum Response}
           if RxBuf[0] <> $FE then raise EAbort.Create('RAM Checksum Error');//Error(ord(mtRAMChecksumError) + (strtoint(FComPort) shl 16));
 
           SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for "Ready" signal', True);
 
           {Now loader starts up in the Propeller; wait for loader's "ready" signal}
+          UpdateProgress(+1);
           Acknowledged := XBee.ReceiveUDP(RxBuf, SerTimeout);                                                           {Receive loader's response}
           if not Acknowledged or (Length(RxBuf) <> 4) then raise EAbort.Create('Error, No Ready Signal from loader');   {Verify ready signal}
           if Cardinal(RxBuf[0]) <> PacketID then raise EAbort.Create('Error, Loader communication failure');            {Check loader's ready signal}
@@ -568,6 +543,7 @@ begin
       SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Switching to final baud rate', True);
 
       {Switch to final baud rate}
+      UpdateProgress(+1, 'Increasing connection speed');
       if not XBee.SetItem(xbSerialBaud, FinalBaud) then raise Exception.Create('Can not switch to final baud rate');
 
       {Transmit packetized target application}
@@ -580,20 +556,22 @@ begin
         Move(FBinImage[i*4], TxBuf[2*4], (TxBuffLength-2)*4);                          {  Store section of data}
         Retry := 4;
         repeat {(Re)Transmit packet}                                                   {  Send application image packet, get acknowledgement, retransmit as necessary}
+          UpdateProgress(+1, 'Sending packet: ' + (TotalPackets-PacketID+1).ToString + ' of ' + TotalPackets.ToString);
 
           SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Time: ' + Time.ToString + ' Transmitting packet ' + PacketID.ToString, True);
 
           Time := Ticks;                                                               {    Note transmit time}
           if not XBee.SendUDP(TxBuf, True, False) then raise Exception.Create('Error Transmitting Application Image');
-          
+
           SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for packet acknowledgement', True);
 
           Acknowledged := XBee.ReceiveUDP(RxBuf, SerTimeout) and (Length(RxBuf) = 4);  {    Wait for positive/negative acknowledgement, or timeout}
           Time := GetTickDiff(Time, Ticks);                                            {    Calculate acknowledgement/timeout time}
-          SendDebugMessage('          - Time: ' + Time.ToString + ' Min: ' + Trunc((TxBuffLength*4*10/FinalBaud)*1000).ToString, True);
+          SendDebugMessage('          - Elapsed: ' + Time.ToString + ' Minimum: ' + Trunc((TxBuffLength*4*10/FinalBaud)*1000).ToString, True);
           dec(Retry);                                                                  {  Loop and retransmit until timely positive acknowledgement received, or retry count exhausted}
-        {Repeat - (Re)Transmit packet...}  
+        {Repeat - (Re)Transmit packet...}
         { TODO : Revisit phase variance timing trap }
+          if not (Acknowledged and (Integer(RxBuf[0]) = PacketID-1)) then UpdateProgress(-1);
         until (Acknowledged and {(Time > Trunc((TxBuffLength*4*10/FinalBaud)*1000) and} (Integer(RxBuf[0]) = PacketID-1)) or (Retry = 0);
         if Retry = 0 then raise Exception.Create('Error, loader connection lost.');    {  No acknowledgement received? Error}
         inc(i, TxBuffLength-2);                                                        {  Increment image index}
@@ -606,8 +584,11 @@ begin
       SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for RAM checksum', True);
 
       { TODO : Think about possible need for retransmission of RAM checksum here. }
+      UpdateProgress(+1, 'Verifying RAM');
       if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 1) then raise Exception.Create('Error, Loader communication failure 2');
       if Cardinal(RxBuf[0]) <> 0 then raise Exception.Create('Error: RAM Checksum Error');
+
+      UpdateProgress(+1, 'Success');
 
 //    if XBee.ConnectTCP then
 //      begin
@@ -707,6 +688,8 @@ begin
     freemem(LoaderStream);
 
     SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Exiting', True);
+    Pause(250);
+    UpdateProgress(0, '', False);
 
 //    XBee.DisconnectTCP;
   end;
@@ -939,6 +922,7 @@ begin
   if not Result then                                                                         {  If not...}
     begin
     Validate(xbSerialIP, SerialUDP, False);                                                  {    Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
+    { TODO : Figure out how to set xbIPDestination. }
     Validate(xbIPDestination, $C0A80188);                                                    {    Ensure Serial-to-IP destination is us (our IP)}
     Validate(xbIO2State, pinOutHigh);                                                        {    Ensure I/O is set to output high}
     Validate(xbOutputMask, $7FFF);                                                           {    Ensure output mask is proper (default, in this case)}

@@ -14,6 +14,7 @@ THINGS TO DO
 
 * Check if necessary to have 255 (blank) between 1st and 2nd handshake stream
 * Make better timeout method
+
 * Ensure proper delay after handshake and image
 * Finalize RAM Checksum response sequence
 * If host receives no "Ready" signal, start image transmission anyway as there's a good chance of recovery
@@ -69,7 +70,7 @@ THINGS DONE
   * Determined this is because of a firmware bug.
 * Determine how to find local addresses and subnet masks
   * Local addresses are findable, but subnet masks are curiously hidden
-
+* Add progress bar
 
 * First Try:
   * Dropped UDP Packets
@@ -106,6 +107,7 @@ THINGS DONE
         * Loader positively acknowledges duplicates, but dumps duplicate data
         * Loader "may" negatively acknowlege packet and request previous packet (if UDP does't dump corrupted packets; ie: a corrupted acknowledge from before)
           * Host retransmits requested packet if necessary
+
 
 
 * Timing
