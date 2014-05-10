@@ -81,7 +81,7 @@ const
   ImageLimit     = 32768;              {Max size of Propeller Application image file}
 
   InitialBaud    = 115200;             {Initial XBee-to-Propeller baud rate}
-  FinalBaud      = 115200; //230400;             {Final XBee-to-Propeller baud rate}
+  FinalBaud      = 230400;             {Final XBee-to-Propeller baud rate}
 
   {Call frame}
   InitCallFrame     : array [0..7] of byte = ($FF, $FF, $F9, $FF, $FF, $FF, $F9, $FF); {See ValidateImageDataIntegrity for info on InitCallFrame}
@@ -395,7 +395,7 @@ const
      if Status <> '' then StatusLabel.Text := Status;
      Progress.Visible := Show;
      Application.ProcessMessages;
-     SendDebugMessage('Progress Updated: ' + Trunc(Progress.Value).ToString + ' of ' + Trunc(Progress.Max).ToString, True);
+//     SendDebugMessage('Progress Updated: ' + Trunc(Progress.Value).ToString + ' of ' + Trunc(Progress.Max).ToString, True);
    end;
 
    {----------------}
@@ -469,6 +469,10 @@ begin
       
         {Prepare initial packet; contains handshake and Loader Stream.}
         SetLength(TxBuf, Length(TxHandshake)+11+LoaderStreamSize);                                      {Set initial packet size}
+        if Length(TxBuf) > XBee.MaxDataSize then raise Exception.Create('Error: Initial packet is too large (' + Length(TxBuf).ToString + ' bytes)!');
+
+        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Initial packet size: ' + Length(TxBuf).ToString + ' bytes', True);
+
         Move(TxHandshake, TxBuf[0], Length(TxHandshake));                                               {Fill packet with handshake stream (timing template, handshake, and download command (RAM+Run))}
         TxBuffLength := Length(TxHandshake);                                                            {followed by Raw Loader Images's App size (in longs)}
         AppendLong(RawLoaderAppSize);
