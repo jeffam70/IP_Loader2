@@ -7,6 +7,7 @@ uses
   FMX.Types, FMX.Graphics, FMX.Controls, FMX.Forms, FMX.Dialogs, FMX.StdCtrls, FMX.Edit, FMX.ListBox,
   XBeeWiFi,
   IdGlobal, IdBaseComponent, IdComponent, IdRawBase, IdRawClient, IdIcmpClient, IdStack, FMX.Layouts, FMX.Memo,
+  Time,
   Debug;
 
 type
@@ -68,6 +69,7 @@ type
 
 var
   Form1     : TForm1;
+  Time      : TTime;
   XBee      : TXBeeWiFi;
   XBeeList  : array of TXBee;           {Dynamic array of XBee Info records}
   TxBuf     : TIdBytes;                 {Transmit packet (resized per packet)}
@@ -102,6 +104,7 @@ implementation
 
 procedure TForm1.FormCreate(Sender: TObject);
 begin
+  Time := TTime.Create;
   XBee := TXBeeWiFi.Create;
   XBee.SerialTimeout := SerTimeout;
   XBee.ApplicationTimeout := AppTimeout;
@@ -112,6 +115,7 @@ end;
 procedure TForm1.FormDestroy(Sender: TObject);
 begin
   XBee.Destroy;
+  Time.Destroy;
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -203,7 +207,7 @@ var
   TotalPackets     : Integer;                            {Total number of image packets}
   PacketID         : Integer;                            {ID of packet transmitted}
   Retry            : Integer;                            {Retry counter}
-  Time             : Int64;
+  RemainingTxTime  : Cardinal;                           {Holds remaining time to transmit packet}
   Acknowledged     : Boolean;                            {True = positive/negative acknowledgement received from loader, False = no response from loader}
 
   STime            : Int64;
@@ -590,22 +594,22 @@ begin
           repeat {(Re)Transmit packet}                                                           {  Send application image packet, get acknowledgement, retransmit as necessary}
             UpdateProgress(+1, 'Sending packet: ' + (TotalPackets-PacketID+1).ToString + ' of ' + TotalPackets.ToString);
 
-            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Time: ' + Time.ToString + ' Transmitting packet ' + PacketID.ToString, True);
+            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' Transmitting packet ' + PacketID.ToString, True);
 
-            Time := Ticks;                                                                       {    Note transmit time}
+            Time.Left(Trunc((TxBuffLength*4*10/FinalBaud)*1000));                                {    Mark required Tx time}
             if not XBee.SendUDP(TxBuf, True, False) then
               raise EHardDownload.Create('Error: Can not transmit application image!');
 
             SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for packet acknowledgement', True);
 
             Acknowledged := XBee.ReceiveUDP(RxBuf, DynamicSerTimeout) and (Length(RxBuf) = 4);   {    Wait for positive/negative acknowledgement, or timeout}
-            Time := GetTickDiff(Time, Ticks);                                                    {    Calculate acknowledgement/timeout time}
-            SendDebugMessage('          - Elapsed: ' + Time.ToString + ' Minimum: ' + Trunc((TxBuffLength*4*10/FinalBaud)*1000).ToString, True);
+            RemainingTxTime := Time.Left;                                                        {    Check remaining time to transmit (should be 0 ms)}
+            if RemainingTxTime > 0 then SendDebugMessage('          - ERROR: Remaining Tx Time: ' + RemainingTxTime.ToString, True);
             dec(Retry);                                                                          {  Loop and retransmit until timely positive acknowledgement received, or retry count exhausted}
           {Repeat - (Re)Transmit packet...}
           { TODO : Revisit phase variance timing trap }
             if not (Acknowledged and (Integer(RxBuf[0]) = PacketID-1)) then UpdateProgress(-1);
-          until (Acknowledged and {(Time > Trunc((TxBuffLength*4*10/FinalBaud)*1000) and} (Integer(RxBuf[0]) = PacketID-1)) or (Retry = 0);
+          until (Acknowledged and (RemainingTxTime = 0) and (Integer(RxBuf[0]) = PacketID-1)) or (Retry = 0);
           if Retry = 0 then
             raise EHardDownload.Create('Error: connection lost!');                               {  No acknowledgement received? Error}
           inc(i, TxBuffLength-2);                                                                {  Increment image index}

@@ -4,7 +4,7 @@ uses
   FMX.Forms,
   Main in 'Main.pas' {Form1},
   XBeeWiFi in 'XBeeWiFi.pas',
-  Timer in 'Timer.pas';
+  Time in 'Time.pas';
 
 {$R *.res}
 

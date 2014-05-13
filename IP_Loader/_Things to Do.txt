@@ -12,9 +12,6 @@ THINGS TO DO
 
 * Check variation in Reset-to-Image-Stream delays over distance
 
-* Make better timeout method
-  * Test as a separate app
-
 * Finalize RAM Checksum response sequence
 * If host receives no "Ready" signal, start image transmission anyway as there's a good chance of recovery
 * If host receives no final ACK, handle gracefully
@@ -80,6 +77,8 @@ THINGS DONE
 * Check if necessary to have 255 (blank) between 1st and 2nd handshake stream
   * Yes, without it, the booter doesn't quite have enough time to synch to the first timing template bit.
 * Ensure proper delay after handshake and image
+* Make better timeout method
+  * Test as a separate app
 
 
 * First Try:

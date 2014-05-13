@@ -16,7 +16,7 @@ uses
 {  mmsystem,}
   FMX.Dialogs,
   IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack,
-  Timer,
+  Time,
   Debug;
 
 type
@@ -111,6 +111,7 @@ type
     FSerTCPClient    : TIdTCPClient;             {TCP Client for XBee's Serial Communication Service (usually port $2616 (9750))}
     FSerUDPClient    : TIdUDPClient;             {UDP Client for XBee's Serial Communication Service (usually port $2616 (9750))}
     FAppUDPClient    : TIdUDPClient;             {UDP Client for XBee's Application Service (always port $BEE (3054))}
+    FTime            : TTime;                    {Time object}
     {IP Buffer}
     FTxBuf           : TIdBytes;                 {Raw transmit packet (resized per packet)}
     FRxBuf           : TIdBytes;                 {Raw receive packet stream (fixed to MaxPacketSize)}
@@ -307,6 +308,7 @@ begin
   FAppUDPClient.BoundPort := $BEE;                           {Bind Application UDP Client to port $BEE (local and remote side)}
   FAppUDPClient.Port := $BEE;
   FAppUDPClient.ReceiveTimeout := DefaultApplicationTimeout; {Set it's read-timeout}
+  FTime := TTime.Create;                                     {Create Time object}
   SetLength(FRxBuf, DefaultBufferSize);                      {Set receive buffer length}
   FPRxBuf := PxbRxPacket(@FRxBuf[0]);                        {Point PRxBuf at RxBuf}
  { TODO : Consider determining real max data packet size from module. }
@@ -323,6 +325,7 @@ begin
   FSerTCPClient.Destroy;                         {Destroy Serial TCP Client}
   FSerUDPClient.Destroy;                         {Destroy Serial UDP Client}
   FAppUDPClient.Destroy;                         {Destroy Application UDP Client}
+  FTime.Destroy;                                 {Destroy Time object}
   SetLength(FRxBuf, 0);                          {Free RxBuf memory}
 end;
 
@@ -542,10 +545,10 @@ var
 begin
   if not FSerUDPClient.Connected then raise Exception.Create('Error: Serial UDP socket must first be connected.');
   SetLength(Data, DefaultBufferSize);                                                                        {Resize buffer to standard max packet size}
-  CheckTime(Timeout);
+  FTime.Left(Timeout);
   repeat
     Count := FSerUDPClient.ReceiveBuffer(Data, Timeout);
-  until (Count > 0) or (CheckTime = 0);
+  until (Count > 0) or (FTime.Left = 0);
   SetLength(Data, Count);                                                                                    {Receive data and resize buffer to exactly fit it}
   Result := Count > 0;
   SendDebugMessage('          - ' + ifthen(Result, 'Received ' + Count.ToString + ' byte(s)', 'No response!'), True);
