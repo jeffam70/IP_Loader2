@@ -77,6 +77,7 @@ var
 
 
 const
+  MinSerTimeout  = 100;
   SerTimeout     = 1000;
   AppTimeout     = 200;
   CSumUnknown    = $FFFFFFFF;          {Unknown checksum value}
@@ -375,6 +376,15 @@ const
 
    {----------------}
 
+   function DynamicSerTimeout: Integer;
+   {Returns serial timeout adjusted for recent communication delays; minimum MinSerTimeout ms, maximum SerTimeout ms}
+   begin
+     Result := Max(MinSerTimeout, Min(XBee.UDPMaxRoundTrip*3, SerTimeout));
+     SendDebugMessage('          - MaxRoundTrip: ' + XBee.UDPMaxRoundTrip.ToString+ ' DynamicSerTimeout: ' + Result.ToString, True);
+   end;
+
+   {----------------}
+
    procedure UpdateProgress(Offset: Integer; Status: String = ''; Show: Boolean = True);
    {Update progress bar.}
    begin
@@ -493,7 +503,7 @@ begin
             {(Enforce XBee Configuration and...) Generate reset signal, then wait for serial transfer window}
             UpdateProgress(0, 'Generating reset signal');
             GenerateResetSignal;
-            Pause(190);
+            IndySleep(190);
 
             SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending handshake and loader image', True);
 
@@ -501,7 +511,7 @@ begin
             UpdateProgress(+1, 'Connecting');
             if not XBee.SendUDP(TxBuf, True, False) then                                                  {Send Connect and Loader packet}
               raise EHardDownload.Create('Error: Can not send connection request!');
-            Pause(Length(TxBuf)*10 div InitialBaud + 120);
+            IndySleep(Length(TxBuf)*10 div InitialBaud + 120);
 
             SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending timing templates', True);
 
@@ -511,7 +521,7 @@ begin
             FillChar(TxBuf[0], XBee.MaxDataSize, $F9);
             if not XBee.SendUDP(TxBuf, True, False) then                                                  {Send timing template packet}
               raise EHardDownload.Create('Error: Can not request connection response!');
-            Pause(Length(TxBuf)*10 div InitialBaud);
+            IndySleep(Length(TxBuf)*10 div InitialBaud);
 
             { TODO : Revisit handshake receive loop to check for all possibilities and how they are handled. }
             repeat {Flush receive buffer and get handshake response}
@@ -533,7 +543,7 @@ begin
 
             {Receive RAM checksum response}
             UpdateProgress(+1);
-            if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 1) then                        {Receive Loader RAM Checksum Response}
+            if not XBee.ReceiveUDP(RxBuf, DynamicSerTimeout) or (Length(RxBuf) <> 1) then                 {Receive Loader RAM Checksum Response}
               raise ESoftDownload.Create('Error: No loader checksum response!');
             if RxBuf[0] <> $FE then
               raise EHardDownload.Create('Error: Loader failed checksum test');
@@ -542,7 +552,7 @@ begin
 
             {Now loader starts up in the Propeller; wait for loader's "ready" signal}
             UpdateProgress(+1);
-            Acknowledged := XBee.ReceiveUDP(RxBuf, SerTimeout);                                           {Receive loader's response}
+            Acknowledged := XBee.ReceiveUDP(RxBuf, DynamicSerTimeout);                                    {Receive loader's response}
             if not Acknowledged or (Length(RxBuf) <> 4) then                                              {Verify ready signal format}
               raise ESoftDownload.Create('Error: No "Ready" signal from loader!');
             if Cardinal(RxBuf[0]) <> PacketID then                                                        {Verify ready signal}
@@ -570,38 +580,38 @@ begin
 
         {Transmit packetized target application}
         i := 0;
-        repeat {Transmit target application packets}                                     {Transmit application image}
-          TxBuffLength := 2 + Min((XBee.MaxDataSize div 4)-2, FBinSize - i);             {  Determine packet length (in longs); header + packet limit or remaining data length}
-          SetLength(TxBuf, TxBuffLength*4);                                              {  Set buffer length (Packet Length) (in longs)}
-          Move(TxBuffLength, TxBuf[0], 4);                                               {  Store Packet Size (longs)}
-          Move(PacketID, TxBuf[4], 4);                                                   {  Store Packet ID}
-          Move(FBinImage[i*4], TxBuf[2*4], (TxBuffLength-2)*4);                          {  Store section of data}
+        repeat {Transmit target application packets}                                             {Transmit application image}
+          TxBuffLength := 2 + Min((XBee.MaxDataSize div 4)-2, FBinSize - i);                     {  Determine packet length (in longs); header + packet limit or remaining data length}
+          SetLength(TxBuf, TxBuffLength*4);                                                      {  Set buffer length (Packet Length) (in longs)}
+          Move(TxBuffLength, TxBuf[0], 4);                                                       {  Store Packet Size (longs)}
+          Move(PacketID, TxBuf[4], 4);                                                           {  Store Packet ID}
+          Move(FBinImage[i*4], TxBuf[2*4], (TxBuffLength-2)*4);                                  {  Store section of data}
           Retry := 4;
-          repeat {(Re)Transmit packet}                                                   {  Send application image packet, get acknowledgement, retransmit as necessary}
+          repeat {(Re)Transmit packet}                                                           {  Send application image packet, get acknowledgement, retransmit as necessary}
             UpdateProgress(+1, 'Sending packet: ' + (TotalPackets-PacketID+1).ToString + ' of ' + TotalPackets.ToString);
 
             SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Time: ' + Time.ToString + ' Transmitting packet ' + PacketID.ToString, True);
 
-            Time := Ticks;                                                               {    Note transmit time}
+            Time := Ticks;                                                                       {    Note transmit time}
             if not XBee.SendUDP(TxBuf, True, False) then
               raise EHardDownload.Create('Error: Can not transmit application image!');
 
             SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for packet acknowledgement', True);
 
-            Acknowledged := XBee.ReceiveUDP(RxBuf, SerTimeout) and (Length(RxBuf) = 4);  {    Wait for positive/negative acknowledgement, or timeout}
-            Time := GetTickDiff(Time, Ticks);                                            {    Calculate acknowledgement/timeout time}
+            Acknowledged := XBee.ReceiveUDP(RxBuf, DynamicSerTimeout) and (Length(RxBuf) = 4);   {    Wait for positive/negative acknowledgement, or timeout}
+            Time := GetTickDiff(Time, Ticks);                                                    {    Calculate acknowledgement/timeout time}
             SendDebugMessage('          - Elapsed: ' + Time.ToString + ' Minimum: ' + Trunc((TxBuffLength*4*10/FinalBaud)*1000).ToString, True);
-            dec(Retry);                                                                  {  Loop and retransmit until timely positive acknowledgement received, or retry count exhausted}
+            dec(Retry);                                                                          {  Loop and retransmit until timely positive acknowledgement received, or retry count exhausted}
           {Repeat - (Re)Transmit packet...}
           { TODO : Revisit phase variance timing trap }
             if not (Acknowledged and (Integer(RxBuf[0]) = PacketID-1)) then UpdateProgress(-1);
           until (Acknowledged and {(Time > Trunc((TxBuffLength*4*10/FinalBaud)*1000) and} (Integer(RxBuf[0]) = PacketID-1)) or (Retry = 0);
           if Retry = 0 then
-            raise EHardDownload.Create('Error: connection lost!');                       {  No acknowledgement received? Error}
-          inc(i, TxBuffLength-2);                                                        {  Increment image index}
-          dec(PacketID);                                                                 {  Decrement Packet ID (to next packet)}
+            raise EHardDownload.Create('Error: connection lost!');                               {  No acknowledgement received? Error}
+          inc(i, TxBuffLength-2);                                                                {  Increment image index}
+          dec(PacketID);                                                                         {  Decrement Packet ID (to next packet)}
         {repeat - Transmit target application packets...}  
-        until PacketID = 0;                                                              {Loop until done}
+        until PacketID = 0;                                                                      {Loop until done}
 
         {Receive RAM checksum pass/fail}
 
@@ -714,7 +724,7 @@ begin
       freemem(LoaderStream);
 
       SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Exiting', True);
-      Pause(500);
+      IndySleep(500);
       UpdateProgress(0, '', False);
 
       TransmitButton.Enabled := True;

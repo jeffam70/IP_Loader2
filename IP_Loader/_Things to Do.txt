@@ -12,12 +12,9 @@ THINGS TO DO
 
 * Check variation in Reset-to-Image-Stream delays over distance
 
-* Check if necessary to have 255 (blank) between 1st and 2nd handshake stream
 * Make better timeout method
   * Test as a separate app
 
-* Create soft, hard, and fatal error cases and handle them properly
-* Ensure proper delay after handshake and image
 * Finalize RAM Checksum response sequence
 * If host receives no "Ready" signal, start image transmission anyway as there's a good chance of recovery
 * If host receives no final ACK, handle gracefully
@@ -79,6 +76,10 @@ THINGS DONE
 * Add progress bar
 * Prevent clicking on Transmit during a transmit process
 * Make buttons active only during valid conditions
+* Create soft and hard error cases and handle them properly
+* Check if necessary to have 255 (blank) between 1st and 2nd handshake stream
+  * Yes, without it, the booter doesn't quite have enough time to synch to the first timing template bit.
+* Ensure proper delay after handshake and image
 
 
 * First Try:

@@ -13,9 +13,10 @@ interface
 
 uses
   System.SysUtils, System.StrUtils, System.Math,
-  mmsystem,
+{  mmsystem,}
   FMX.Dialogs,
   IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack,
+  Timer,
   Debug;
 
 type
@@ -155,7 +156,9 @@ type
 //    property LocalTCPPort : Cardinal read GetLocalTCPPort write SetLocalTCPPort;
     property SerialTimeout : Integer index 0 read GetTimeout write SetTimeout;                             {Read-timeout for serial service}
     property ApplicationTimeout : Integer index 1 read GetTimeout write SetTimeout;                        {Read-timeout for application service}
-    property UDPRoundTrip : Integer read FUDPRoundTrip;                                                    {Get last round-trip time for UDP App Packets}
+    property UDPRoundTrip : Integer read FUDPRoundTrip;                                                    {Get last round-trip time for UDP App Packets for this device}
+{ TODO : Ensure UDPRoundTrip and MaxUDPRoundTrip is reset with device changes. }
+    property UDPMaxRoundTrip : Integer read FMaxUDPRoundTrip;                                              {Get maximum rount-trip time for UDP App Packets for this device}
     { TODO : Determin if MaxDataSize property should retrieve the actual value when called. }
     property MaxDataSize : Cardinal read FMaxDataSize;                                                     {Get maximum packet payload size}
   private
@@ -168,8 +171,6 @@ type
   {Non-object functions and procedures}
   function FormatIPAddr(Addr: Cardinal): String;
   function FormatMACAddr(AddrHigh, AddrLow: Cardinal): String;
-  procedure Pause(Duration: Cardinal);
-  function CheckTime(Duration: Cardinal = 0): Cardinal;
 
 const
   {Network Header Metrics}
@@ -463,8 +464,6 @@ var
   TempTxBuff     : TIdBytes;  {Temporary transmission buffer used only when Data is too big}
   Idx            : Integer;   {Holds index of next byte to transmit}
   PacketSize     : Cardinal;  {Holds size of next packet being transmitted}
-  TimeMetrics    : TTimeCaps;
-  TimeResolution : Cardinal;
 //  MaxSize        : Cardinal;
 
     {----------------}
@@ -511,32 +510,23 @@ begin
 //        end;
 //      Result := Idx+PrevPacketSize = Length(Data);                                               {  Return appropriate result}
 
-      TimeResolution := 0;                                                                       {  Request 1 ms timer resolution}
-      if timeGetDevCaps(@TimeMetrics, SizeOf(TimeMetrics)) = TIMERR_NOERROR then
-        begin
-        TimeResolution := Min(Max(TimeMetrics.wPeriodMin, 1), TimeMetrics.wPeriodMax);
-        timeBeginPeriod(TimeResolution);
-        end;
-
-      Idx := 0;                                                                                  {  Prep for first packet}
+      Idx := 0;                                                                                    {  Prep for first packet}
       PacketSize := FMaxDataSize;
-      repeat                                                                                     {  Loop for all necessary packets}
+      repeat                                                                                       {  Loop for all necessary packets}
 //        SendDebugMessage('Iterate', True);
-        SetLength(TempTxBuff, PacketSize);                                                       {    Else, set proper packet size}
-        Move(Data[Idx], TempTxBuff[0], PacketSize);                                              {    Prepare packet}
+        SetLength(TempTxBuff, PacketSize);                                                         {    Else, set proper packet size}
+        Move(Data[Idx], TempTxBuff[0], PacketSize);                                                {    Prepare packet}
 { TODO : Make SendUDP adjust to baud rate }
 //        SendDebugMessage('Pausing: ' + inttostr(Max(Trunc(FMaxDataSize*0.30*11/115200*1000-FUDPRoundTrip), 0)) + ' ms.  FUDPRoundTrip: ' + inttostr(FUDPRoundTrip), True);
-        if Idx > 0 then Pause(Max(Trunc(FMaxDataSize*0.30*11/115200*1000-FUDPRoundTrip), 0));    {    If not first packet, wait for 30% of "full data" to transmit out UART}
-        if not Send(TempTxBuff) then break;                                                      {    Send packet; exit if failure}
-        inc(Idx, PacketSize);                                                                    {    Prep for start of next packet}
-        PacketSize := Min(Trunc(FMaxDataSize*0.30), Length(Data)-Idx);                           {    Next packet will be maximum of 30% of "full data," so as not to overflow XBee UART buffer}
-        Result := PacketSize = 0;                                                                {    Total success? (all packets successfully sent)}
-      until Result;                                                                              {    Loop until done}
+        if Idx > 0 then IndySleep(Max(Trunc(FMaxDataSize*0.30*11/115200*1000-FUDPRoundTrip), 0));  {    If not first packet, wait for 30% of "full data" to transmit out UART}
+        if not Send(TempTxBuff) then break;                                                        {    Send packet; exit if failure}
+        inc(Idx, PacketSize);                                                                      {    Prep for start of next packet}
+        PacketSize := Min(Trunc(FMaxDataSize*0.30), Length(Data)-Idx);                             {    Next packet will be maximum of 30% of "full data," so as not to overflow XBee UART buffer}
+        Result := PacketSize = 0;                                                                  {    Total success? (all packets successfully sent)}
+      until Result;                                                                                {    Loop until done}
     finally
       SetLength(TempTxBuff, 0);
 //      SendDebugMessage('Exiting', True);
-      if TimeResolution > 0 then
-        timeEndPeriod(TimeResolution);
     end;
     end;
 end;
@@ -807,30 +797,6 @@ function FormatMACAddr(AddrHigh, AddrLow: Cardinal): String;
 {Return MAC Address (48-bit number in MacAddrHigh:MaccAddrLow) in standard string format}
 begin
   Result := Format('%.2x:%.2x:%.2x:%.2x:%.2x:%.2x', [AddrHigh shr 8 and $FF, AddrHigh and $FF, AddrLow shr 24 and $FF, AddrLow shr 16 and $FF, AddrLow shr 8 and $FF, AddrLow and $FF]);
-end;
-
-{----------------------------------------------------------------------------------------------------}
-
-procedure Pause(Duration: Cardinal);
-{Pause for Duration period.  This method ensures that pause is at least Duration milliseconds long, unlike the typical sleep API calls.}
-begin
-  CheckTime(Duration);
-  repeat IndySleep(CheckTime) until CheckTime = 0;
-end;
-
-{----------------------------------------------------------------------------------------------------}
-
-function CheckTime(Duration: Cardinal = 0): Cardinal;
-{Mark time (if Duration > 0) and note if last time Duration has passed (if Duration = 0).
- Returns time left to complete previous Duration, or 0 if time Duration has already passed.}
-begin
-  if Duration > 0 then
-    begin {New delay; note time and duration value}
-    ctTime := Ticks;
-    ctDelay := Duration;
-    end;
-  {Calculate and return difference between current time and last duration}
-  Result := Max(0, Integer(ctDelay - GetTickDiff(ctTime, Ticks)));
 end;
 
 {----------------------------------------------------------------------------------------------------}
