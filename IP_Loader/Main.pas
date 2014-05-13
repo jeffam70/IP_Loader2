@@ -199,7 +199,7 @@ var
   FVersionMode     : Boolean;
   FDownloadMode    : Byte;
 
-  Checksum         : Byte;
+  Checksum         : Integer;                            {Target Propeller Application's checksum (low byte = 0)}
   LoaderImage      : PByteArray;                         {Adjusted Loader Memory image}
   LoaderStream     : PByteArray;                         {Loader Download Stream (Generated from Loader Image)}
   LoaderStreamSize : Integer;                            {Size of Loader Download Stream}
@@ -295,30 +295,31 @@ const
                                             $5B,$01,$00,$00,$08,$02,$00,$00,$00,$2D,$31,$01,$00,$00,$00,$00,
                                             $35,$C7,$08,$35,$2C,$32,$00,$00);
 }
-  RawLoaderAppSize = 109;
-  RawLoaderImage : array[0..435] of byte = ($00,$B4,$C4,$04,$6F,$70,$10,$00,$B4,$01,$BC,$01,$AC,$01,$C0,$01,
-                                            $A4,$01,$02,$00,$9C,$01,$00,$00,$5F,$E8,$BF,$A0,$5F,$EC,$BF,$A0,
-                                            $01,$E8,$FF,$68,$01,$EC,$FF,$68,$60,$CC,$BC,$A1,$01,$CC,$FC,$28,
-                                            $F1,$CD,$BC,$80,$A0,$CA,$CC,$A0,$60,$CC,$BC,$F8,$F2,$BD,$3C,$61,
-                                            $07,$CA,$FC,$E4,$22,$00,$7C,$5C,$6A,$D2,$FC,$A0,$00,$AE,$FC,$A0,
-                                            $69,$24,$BC,$54,$69,$28,$BC,$54,$69,$2A,$BC,$54,$04,$D0,$FC,$A0,
-                                            $00,$D4,$FC,$A0,$48,$AC,$FC,$5C,$67,$D4,$BC,$68,$08,$D4,$FC,$20,
-                                            $13,$D0,$FC,$E4,$01,$D2,$FC,$80,$01,$AE,$FC,$80,$0E,$D4,$FC,$E4,
-                                            $64,$D6,$3C,$86,$01,$C8,$E8,$84,$02,$AE,$FC,$84,$58,$D8,$28,$08,
-                                            $04,$B0,$E8,$80,$5A,$3A,$A8,$80,$1D,$AE,$E8,$E4,$6C,$3A,$E8,$54,
-                                            $04,$D0,$FC,$A0,$64,$CE,$BC,$A0,$08,$C8,$FC,$20,$3E,$8E,$FC,$5C,
-                                            $23,$D0,$FC,$E4,$61,$C0,$BC,$A0,$0C,$C8,$7C,$E8,$5B,$AE,$BC,$A0,
-                                            $58,$AE,$BC,$84,$02,$AE,$FC,$2A,$58,$D0,$14,$08,$04,$B0,$D4,$80,
-                                            $2C,$AE,$D4,$E4,$0A,$AE,$FC,$04,$04,$AE,$FC,$84,$57,$B8,$3C,$08,
-                                            $04,$AE,$FC,$84,$57,$B8,$3C,$08,$01,$B0,$FC,$84,$58,$D0,$BC,$00,
-                                            $68,$CE,$BC,$80,$34,$B0,$7C,$E8,$FF,$CE,$FC,$62,$3E,$8E,$FC,$5C,
-                                            $06,$B0,$FC,$04,$10,$B0,$7C,$86,$00,$B2,$54,$0C,$02,$BA,$7C,$0C,
-                                            $FF,$CE,$FC,$60,$00,$CF,$FC,$68,$01,$CE,$FC,$2C,$60,$CC,$BC,$A0,
-                                            $F1,$CD,$BC,$80,$01,$CE,$FC,$29,$60,$CC,$BC,$F8,$5F,$E8,$BF,$70,
-                                            $43,$CE,$7C,$E8,$00,$00,$7C,$5C,$63,$CA,$BC,$A0,$62,$CC,$BC,$A1,
-                                            $00,$CE,$FC,$A0,$80,$CF,$FC,$72,$F2,$BD,$3C,$61,$4B,$CA,$F8,$E4,
-                                            $00,$B2,$78,$0C,$F1,$CD,$BC,$80,$60,$CC,$BC,$F8,$01,$E8,$FF,$6C,
-                                            $F2,$BD,$3C,$61,$00,$CF,$FC,$70,$01,$CE,$FC,$29,$50,$00,$4C,$5C,
+  RawLoaderAppSize = 113;
+  RawLoaderImage : array[0..451] of byte = ($00,$B4,$C4,$04,$6F,$5D,$10,$00,$C4,$01,$CC,$01,$BC,$01,$D0,$01,
+                                            $B4,$01,$02,$00,$AC,$01,$00,$00,$63,$E8,$BF,$A0,$63,$EC,$BF,$A0,
+                                            $01,$E8,$FF,$68,$01,$EC,$FF,$68,$64,$D4,$BC,$A1,$01,$D4,$FC,$28,
+                                            $F1,$D5,$BC,$80,$A0,$D2,$CC,$A0,$64,$D4,$BC,$F8,$F2,$C5,$3C,$61,
+                                            $07,$D2,$FC,$E4,$22,$00,$7C,$5C,$6E,$DA,$FC,$A0,$00,$B6,$FC,$A0,
+                                            $6D,$24,$BC,$54,$6D,$28,$BC,$54,$6D,$2A,$BC,$54,$04,$D8,$FC,$A0,
+                                            $00,$DC,$FC,$A0,$4C,$B4,$FC,$5C,$6B,$DC,$BC,$68,$08,$DC,$FC,$20,
+                                            $13,$D8,$FC,$E4,$01,$DA,$FC,$80,$01,$B6,$FC,$80,$0E,$DC,$FC,$E4,
+                                            $68,$DE,$3C,$86,$01,$D0,$E8,$84,$02,$B6,$FC,$84,$5C,$E0,$28,$08,
+                                            $04,$B8,$E8,$80,$5E,$3A,$A8,$80,$1D,$B6,$E8,$E4,$70,$3A,$E8,$54,
+                                            $04,$D8,$FC,$A0,$68,$D6,$BC,$A0,$08,$D0,$FC,$20,$42,$96,$FC,$5C,
+                                            $23,$D8,$FC,$E4,$65,$C8,$BC,$A0,$0C,$D0,$7C,$E8,$5F,$B6,$BC,$A0,
+                                            $5C,$B6,$BC,$84,$02,$B6,$FC,$2A,$5C,$D8,$14,$08,$04,$B8,$D4,$80,
+                                            $2C,$B6,$D4,$E4,$0A,$B6,$FC,$04,$04,$B6,$FC,$84,$5B,$C0,$3C,$08,
+                                            $04,$B6,$FC,$84,$5B,$C0,$3C,$08,$01,$B8,$FC,$84,$5C,$D8,$BC,$00,
+                                            $6C,$D0,$BC,$80,$34,$B8,$7C,$E8,$04,$D8,$FC,$A0,$68,$D6,$BC,$A0,
+                                            $08,$D0,$FC,$20,$42,$96,$FC,$5C,$39,$D8,$FC,$E4,$FF,$D0,$FC,$62,
+                                            $06,$B8,$FC,$04,$10,$B8,$7C,$86,$00,$BA,$54,$0C,$02,$C2,$7C,$0C,
+                                            $FF,$D6,$FC,$60,$00,$D7,$FC,$68,$01,$D6,$FC,$2C,$64,$D4,$BC,$A0,
+                                            $F1,$D5,$BC,$80,$01,$D6,$FC,$29,$64,$D4,$BC,$F8,$63,$E8,$BF,$70,
+                                            $47,$D6,$7C,$E8,$00,$00,$7C,$5C,$67,$D2,$BC,$A0,$66,$D4,$BC,$A1,
+                                            $00,$D6,$FC,$A0,$80,$D7,$FC,$72,$F2,$C5,$3C,$61,$4F,$D2,$F8,$E4,
+                                            $00,$BA,$78,$0C,$F1,$D5,$BC,$80,$64,$D4,$BC,$F8,$01,$E8,$FF,$6C,
+                                            $F2,$C5,$3C,$61,$00,$D7,$FC,$70,$01,$D6,$FC,$29,$54,$00,$4C,$5C,
                                             $00,$00,$7C,$5C,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,
                                             $00,$02,$00,$00,$00,$80,$00,$00,$FF,$FF,$F9,$FF,$10,$C0,$07,$00,
                                             $00,$00,$00,$80,$00,$00,$00,$40,$B6,$02,$00,$00,$5B,$01,$00,$00,
@@ -377,6 +378,14 @@ const
         x := x shr 3;
         end;
     end;
+
+   {----------------}
+
+   function Long(Addr: TIdBytes): Cardinal;
+   {Returns four bytes starting at Addr as a single cardinal value (Long)}
+   begin
+     Result := (Addr[3] shl 24) + (Addr[2] shl 16) or (Addr[1] shl 8) or Addr[0];
+   end;
 
    {----------------}
 
@@ -468,10 +477,10 @@ begin
       SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 12, 80000000 * 4 div (2*8));             {Timeout (seconds-worth of Loader's Receive loop iterations}
       SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 16, PacketID);                           {First Expected Packet ID}
       {Recalculate and update checksum}
-      CheckSum := 0;
-      for i := 0 to RawLoaderAppSize*4-1 do CheckSum := CheckSum + LoaderImage[i];
-      for i := 0 to high(InitCallFrame) do CheckSum := CheckSum + InitCallFrame[i];
-      LoaderImage[5] := 256-CheckSum;
+      Checksum := 0;
+      for i := 0 to RawLoaderAppSize*4-1 do inc(Checksum, LoaderImage[i]);
+      for i := 0 to high(InitCallFrame) do inc(Checksum, InitCallFrame[i]);
+      LoaderImage[5] := 256-(CheckSum and $FF);                                                                 {Update loader image so low byte of checksum calculates to 0}
       {Generate Propeller Download Stream from adjusted LoaderImage; Output delivered to LoaderStream and LoaderStreamSize}
       GenerateStream(LoaderImage, RawLoaderAppSize, LoaderStream, LoaderStreamSize);
 
@@ -500,6 +509,11 @@ begin
           TxBuffLength := Length(TxHandshake);                                                            {followed by Raw Loader Images's App size (in longs)}
           AppendLong(RawLoaderAppSize);
           Move(LoaderStream[0], TxBuf[TxBuffLength], LoaderStreamSize);                                   {and the Loader Stream image itself}
+
+          {Calculate target application checksum (used for RAM Checksum confirmation}
+          Checksum := 0;
+          for i := 0 to FBinSize*4-1 do inc(Checksum, FBinImage[i]);
+          for i := 0 to high(InitCallFrame) do inc(Checksum, InitCallFrame[i]);
 
           SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Generating reset signal', True);
 
@@ -592,6 +606,8 @@ begin
           Move(FBinImage[i*4], TxBuf[2*4], (TxBuffLength-2)*4);                                  {  Store section of data}
           Retry := 4;
           repeat {(Re)Transmit packet}                                                           {  Send application image packet, get acknowledgement, retransmit as necessary}
+            if Retry < 4 then UpdateProgress(-1);
+
             UpdateProgress(+1, 'Sending packet: ' + (TotalPackets-PacketID+1).ToString + ' of ' + TotalPackets.ToString);
 
             SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' Transmitting packet ' + PacketID.ToString, True);
@@ -606,15 +622,14 @@ begin
             RemainingTxTime := Time.Left;                                                        {    Check remaining time to transmit (should be 0 ms)}
             if RemainingTxTime > 0 then SendDebugMessage('          - ERROR: Remaining Tx Time: ' + RemainingTxTime.ToString, True);
             dec(Retry);                                                                          {  Loop and retransmit until timely positive acknowledgement received, or retry count exhausted}
-          {Repeat - (Re)Transmit packet...}
+          {Repeat - (Re)Transmit packet...}                                                      {  NOTE: Since it's possible to have missed acknowledgement for packet 1 (last packet), during last packet we'll naturally retry and accept packet acknowledgement or RAM Checksum acknowledgement}
           { TODO : Revisit phase variance timing trap }
-            if not (Acknowledged and (Integer(RxBuf[0]) = PacketID-1)) then UpdateProgress(-1);
-          until (Acknowledged and (RemainingTxTime = 0) and (Integer(RxBuf[0]) = PacketID-1)) or (Retry = 0);
+          until (Acknowledged and ((RemainingTxTime = 0) and (Long(@RxBuf[0]) = PacketID-1)) or ((Retry < 3) and (Long(@RxBuf[0]) > 1000))) or (Retry = 0);
           if Retry = 0 then
             raise EHardDownload.Create('Error: connection lost!');                               {  No acknowledgement received? Error}
           inc(i, TxBuffLength-2);                                                                {  Increment image index}
           dec(PacketID);                                                                         {  Decrement Packet ID (to next packet)}
-        {repeat - Transmit target application packets...}  
+        {repeat - Transmit target application packets...}
         until PacketID = 0;                                                                      {Loop until done}
 
         {Receive RAM checksum pass/fail}
@@ -623,9 +638,14 @@ begin
 
         { TODO : Think about possible need for retransmission of RAM checksum here. }
         UpdateProgress(+1, 'Verifying RAM');
-        if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 1) then
-          raise EHardDownload.Create('Error: No final response!');
-        if Cardinal(RxBuf[0]) <> 0 then
+
+        if Long(@RxBuf[0]) = 0 then
+          begin {Received positive acknowledgement on last packet; look for RAM checksum acknowledgment}
+          if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 4) then
+            raise EHardDownload.Create('Error: No final response!');
+          end;
+        {Received RAM Checksum acknowledgement (now or during last packet retransmit)}
+        if Long(@RxBuf[0]) <> Checksum then
           raise EHardDownload.Create('Error: RAM Checksum Error!');
 
         UpdateProgress(+1, 'Success');

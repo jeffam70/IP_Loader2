@@ -55,8 +55,8 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             {Receive packet into Packet buffer}
   GetNextPacket             mov     PacketAddr, #Packet                         'Reset packet pointer
                             mov     Longs, #0                       '4          'Reset long counter
-    :NextPacketLong         movd    :NextPacketByte-1, PacketAddr   '4
-                            movd    :BuffAddr, PacketAddr           '4          'Point 'Packet{addr}' (dest field) at Packet buffer
+    :NextPacketLong         movd    :NextPacketByte-1, PacketAddr   '4          'Point 'Packet{addr}' (dest field) at Packet buffer
+                            movd    :BuffAddr, PacketAddr           '4          
                             movd    :BuffAddr+1, PacketAddr         '4
                             mov     Bytes, #4                       '4          '  Ready for 1 long
                             mov     Packet{addr}, #0                '4          '    Pre-clear 1 buffer long
@@ -117,15 +117,20 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             jmp     #$
 }
                             
-                            {Verify RAM}                                        '(SBytes = 0, MainRAMAddr = $8000)
+                            {Verify RAM}                                        '(ExpectedID = 0, MainRAMAddr = $8000)
     :Validate               sub     MainRAMAddr, #1                             'Decrement Main RAM Address
                             rdbyte  Bytes, MainRAMAddr                          '  Read next byte from Main RAM
-                            add     SByte, Bytes                                '  Adjust checksum
+                            add     ExpectedID, Bytes                           '  Adjust checksum
                             tjnz    MainRAMAddr, #:Validate                     'Loop for all RAM
-                            and     SByte, #$FF             wz                  'Low byte (checksum) zero? z=yes
 
-                            {Send RAM Checksum ACK/NAK}
-                            call    #Transmit                                   'ACK=0, NAK<>0
+                            {Send RAM Checksum}                                 'ACK=Proper Checksum, NAK=Improper Checksum
+  SendChecksum              mov     Bytes, #4                                   'Ready 1 long
+    :NextAckByte            mov     SByte, ExpectedID                           'ACK=next packet ID, NAK=previous packet ID
+                            ror     ExpectedID, #8
+                            call    #Transmit
+                            djnz    Bytes, #:NextAckByte
+
+                            and     ExpectedID, #$FF        wz                  'Low byte (checksum) zero? z=yes
 
                             {Receive Run/EEPROM command here}
 
