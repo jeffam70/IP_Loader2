@@ -54,18 +54,33 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                         
                             {Receive packet into Packet buffer}
   GetNextPacket             mov     PacketAddr, #Packet                         'Reset packet pointer
-'                           mov     Longs, #0                       '4          'Reset long counter
     :NextPacketLong         movd    :NextPacketByte-1, PacketAddr   '4          'Point 'Packet{addr}' (dest field) at Packet buffer
                             movd    :BuffAddr, PacketAddr           '4          
                             movd    :BuffAddr+1, PacketAddr         '4
                             mov     Bytes, #4                       '4          '  Ready for 1 long
                             mov     Packet{addr}, #0                '4          '    Pre-clear 1 buffer long
-    :NextPacketByte         call    #Receive                        '4          '    Get byte (resets if timeout)
+
+    :NextPacketByte         mov     TimeDelay, Timeout              '4                  'Get byte (resets if timeout); Reset timeout delay
+                            mov     BitDelay, BitTime1_5    wc      '4                  'Prep first bit sample window; clear c for first :RxWait
+                            mov     SByte, #0
+    :RxWait                 muxc    SByte, #%1_1000_0000    wz      '4                  'Wait for Rx start bit (falling edge); Prep SByte for 8 bits
+                            test    RxPin, ina              wc      '4![12/x]           ' Check Rx state; c=0 (not resting), c=1 (resting)
+              if_z_or_c     djnz    TimeDelay, #:RxWait             '4/x                ' No start bit (Z OR C)? loop until timeout
+              if_z_or_c     clkset  Restart                         'x/4                ' No start bit and timed-out? Reset Propeller
+                            add     BitDelay, cnt                   '4                  'Set time to...                   
+    :RxBit                  waitcnt BitDelay, BitTime               '6+                 'Wait for center of bit
+    
+  {debug}                   xor     outa, #1                                             
+
+                            test    RxPin, ina              wc      '4![22/82/110+]     '  Sample bit; c=0/1
+                            muxc    SByte, #%1_0000_0000            '4                  '  Store bit
+                            shr     SByte, #1               wc      '4                  '  Adjust result; c=0 (continue), c=1 (done)
+              if_nc         jmp     #:RxBit                         '4                  'Continue? Loop until done
+    
       :BuffAddr             or      Packet{addr}, SByte             '4          '      store into long (low byte first)
                             ror     Packet{addr}, #8                '4          '      and adjust
                             djnz    Bytes, #:NextPacketByte         '4/8        '    Loop for all bytes of long
                             add     PacketAddr, #1                  '4          '  Done, increment packet pointer for next time
-'                           add     Longs, #1                       '4          '  Increment long count
                             djnz    PacketSize, #:NextPacketLong    '4/x        'Loop for all longs of packet
 
                             {Check packet ID}
@@ -73,12 +88,10 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
               if_z          sub     ExpectedID, #1                              '  Yes? Ready for next; No? Ready for retransmit
 
                             {Copy packet to Main RAM; ignore duplicate}
-'                           sub     Longs, #2                                   'Remove header from long count
                             sub     PacketAddr, #PacketData                     'Make PacketAddr into a loop counter
   CopyPacket  if_z          wrlong  PacketData{addr}, MainRAMAddr               'Write packet long to Main RAM
               if_z          add     MainRAMAddr, #4                             '  Increment Main RAM address
               if_z          add     CopyPacket, IncDest                         '  Increment PacketData address
-'             if_z          djnz    Longs, #CopyPacket                          'Loop for whole packet
               if_z          djnz    PacketAddr, #CopyPacket                     'Loop for whole packet
               if_z          movd    CopyPacket, #PacketData                     'Reset PacketData{addr} for next time
 
@@ -156,7 +169,6 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   Transmit                  and     SByte, #$FF                                         'Retain low byte only
                             or      SByte, #%1_0000_0000                                'Append stop bit; also acts as loop trigger
                             shl     SByte, #1                                           'Prepend start bit
-'                           mov     Bits, #10                                           'Ready 10 bits
                             mov     BitDelay, BitTime                                   'Prep first bit window; ensure prev. stop bit window
                             add     BitDelay, cnt                                        
                                                                                          
@@ -164,40 +176,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             waitcnt BitDelay, BitTime               '6+                 'Wait for edge of bit window
                             muxc    outa, TxPin                     '4![18+]            'Output next bit
                             tjnz    SByte, #:TxBit                  '4/8                'Loop for next bit
-'                           djnz    Bits, #:TxBit                   '4/8                'Loop for next bit                
   Transmit_ret              ret                                     '4                  'Done; return          
-
-'***************************************
-
-{Receive byte from host.
- Requirements:  Timeout value dictates maximum wait for byte.
- Results:       Received byte will be placed into SByte.
-                Propeller will reset if no byte received within timeout.}
-                
-  Receive                   mov     TimeDelay, Timeout              '4                  'Reset timeout delay
-                            mov     BitDelay, BitTime1_5    wc      '4                  'Prep first bit sample window; clear c for first :RxWait
-'                           mov     Bits, #8                        ''4                 'Ready for 8 bits
-                            mov     SByte, #0
-    :RxWait                 muxc    SByte, #%1_1000_0000    wz      '4                  'Wait for Rx start bit (falling edge); Prep SByte for 8 bits
-    {:RxWait}               test    RxPin, ina              wc      '4![12/x]           ' Check Rx state; c=0 (not resting), c=1 (resting)
-              if_z_or_c     djnz    TimeDelay, #:RxWait             '4/x                ' No start bit (Z OR C)? loop until timeout
-              if_z_or_c     clkset  Restart                         'x/4                ' No start bit and timed-out? Reset Propeller
-'   :RxByte                 test    RxPin, ina              wc      ''4![8/68/96]       'Wait for Rx start bit; c=resting
-'             if_c          djnz    TimeDelay, #:RxByte             ''4/8               ' Resting, loop until timeout
-'             if_c          clkset  Restart                         ''x/4               ' Resting and timed-out? Reset Propeller
-                            add     BitDelay, cnt                   '4                  'Set time to...                   
-    :RxBit                  waitcnt BitDelay, BitTime               '6+                 'Wait for center of bit
-    
-  {debug}                   xor     outa, #1                                             
-
-                            test    RxPin, ina              wc      '4![22/82/110+]     '  Sample bit; c=0/1
-                            muxc    SByte, #%1_0000_0000            '4                  '  Store bit
-                            shr     SByte, #1               wc      '4                  '  Adjust result; c=0 (continue), c=1 (done)
-              if_nc         jmp     #:RxBit                         '4                  'Continue? Loop until done
-'                           shr     SByte, #1                       ''4                 'Adjust result and store bit
-'                           muxc    SByte, #%1000_0000              ''4                 'Store bit
-'                           djnz    Bits, #:RxBit                   ''4/8                 
-  Receive_ret               ret                                     '4                  'Done; return
 
 '***************************************
 '*       Constants and Variables       *
