@@ -33,28 +33,28 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
         }
 
                             org     0                    
-                            {Initialize Tx pin}
+                            {Initialize Tx pin}                                 
   Loader                    mov     outa, TxPin                                 'Tx Pin to output high (resting state)
                             mov     dira, TxPin
 
-                            or      outa, #1                                     'Sig Pin to output high
-                            or      dira, #1
+ {debug}                    or      outa, #1                                    'Sig Pin to output high
+ {debug}                    or      dira, #1
 
                             {Wait for resting RxPin}
-                            mov     BitDelay, BitTime       wc                   'Prep wait for 1/2 bit periods; clear c for first :RxWait
+                            mov     BitDelay, BitTime       wc                  'Prep wait for 1/2 bit periods; clear c for first :RxWait
                             shr     BitDelay, #1
                             add     BitDelay, cnt
-    :RxWait   if_nc         mov     TimeDelay, #8*20                             'If RxPin active (c=0), reset sample count; 8 bytes * 20 samples per byte
+    :RxWait   if_nc         mov     TimeDelay, #8*20                            'If RxPin active (c=0), reset sample count; 8 bytes * 20 samples per byte
                             waitcnt BitDelay, BitTime
-                            test    RxPin, ina              wc                   '  Check Rx state; c=0 (not resting), c=1 (resting)
-                            djnz    TimeDelay, #:RxWait                          'Rx busy? Loop until resting 8 byte periods
+                            test    RxPin, ina              wc                  '   Check Rx state; c=0 (not resting), c=1 (resting)
+                            djnz    TimeDelay, #:RxWait                         'Rx busy? Loop until resting 8 byte periods
                         
                             {Send ready signal at initial baud rate}
                             jmp     #SendSignal                                 'Send "ready" and switch to final baud rate
                         
                             {Receive packet into Packet buffer}
   GetNextPacket             mov     PacketAddr, #Packet                         'Reset packet pointer
-                            mov     Longs, #0                       '4          'Reset long counter
+'                           mov     Longs, #0                       '4          'Reset long counter
     :NextPacketLong         movd    :NextPacketByte-1, PacketAddr   '4          'Point 'Packet{addr}' (dest field) at Packet buffer
                             movd    :BuffAddr, PacketAddr           '4          
                             movd    :BuffAddr+1, PacketAddr         '4
@@ -65,7 +65,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             ror     Packet{addr}, #8                '4          '      and adjust
                             djnz    Bytes, #:NextPacketByte         '4/8        '    Loop for all bytes of long
                             add     PacketAddr, #1                  '4          '  Done, increment packet pointer for next time
-                            add     Longs, #1                       '4          '  Increment long count
+'                           add     Longs, #1                       '4          '  Increment long count
                             djnz    PacketSize, #:NextPacketLong    '4/x        'Loop for all longs of packet
 
                             {Check packet ID}
@@ -73,11 +73,13 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
               if_z          sub     ExpectedID, #1                              '  Yes? Ready for next; No? Ready for retransmit
 
                             {Copy packet to Main RAM; ignore duplicate}
-                            sub     Longs, #2                                   'Remove header from long count
+'                           sub     Longs, #2                                   'Remove header from long count
+                            sub     PacketAddr, #PacketData                     'Make PacketAddr into a loop counter
   CopyPacket  if_z          wrlong  PacketData{addr}, MainRAMAddr               'Write packet long to Main RAM
               if_z          add     MainRAMAddr, #4                             '  Increment Main RAM address
               if_z          add     CopyPacket, IncDest                         '  Increment PacketData address
-              if_z          djnz    Longs, #CopyPacket                          'Loop for whole packet
+'             if_z          djnz    Longs, #CopyPacket                          'Loop for whole packet
+              if_z          djnz    PacketAddr, #CopyPacket                     'Loop for whole packet
               if_z          movd    CopyPacket, #PacketData                     'Reset PacketData{addr} for next time
 
                             {Send packet ACK/NAK}
@@ -104,18 +106,6 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             wrlong  CallFrame, Longs                            'Store initial call frame
                             sub     Longs, #4                                   
                             wrlong  CallFrame, Longs
-
-                            
-{                           mov     Longs, EndOfRAM
-                            mov     MainRAMAddr, #0
-    :Read                   rdbyte  SByte, MainRAMAddr                          '  Read next byte from Main RAM
-                            call    #Transmit
-                            add     MainRAMAddr, #1
-                            djnz    Longs, #:Read                               'Loop for all RAM
-
-                            
-                            jmp     #$
-}
                             
                             {Verify RAM}                                        '(ExpectedID = 0, MainRAMAddr = $8000)
     :Validate               sub     MainRAMAddr, #1                             'Decrement Main RAM Address
@@ -198,7 +188,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             add     BitDelay, cnt                   '4                  'Set time to...                   
     :RxBit                  waitcnt BitDelay, BitTime               '6+                 'Wait for center of bit
     
-                            xor     outa, #1                                             
+  {debug}                   xor     outa, #1                                             
 
                             test    RxPin, ina              wc      '4![22/82/110+]     '  Sample bit; c=0/1
                             muxc    SByte, #%1_0000_0000            '4                  '  Store bit
@@ -266,6 +256,18 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                         mov     SByte, Packet
                         call    #Transmit
                         jmp     #$
+}
+
+
+{                           mov     Longs, EndOfRAM
+                            mov     MainRAMAddr, #0
+    :Read                   rdbyte  SByte, MainRAMAddr                          '  Read next byte from Main RAM
+                            call    #Transmit
+                            add     MainRAMAddr, #1
+                            djnz    Longs, #:Read                               'Loop for all RAM
+
+                            
+                            jmp     #$
 }
 
 
