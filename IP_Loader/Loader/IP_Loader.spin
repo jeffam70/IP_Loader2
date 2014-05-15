@@ -44,15 +44,22 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             mov     BitDelay, BitTime       wc                  'Prep wait for 1/2 bit periods; clear c for first :RxWait
                             shr     BitDelay, #1
                             add     BitDelay, cnt
-    :RxWait   if_nc         mov     TimeDelay, #8*20                            'If RxPin active (c=0), reset sample count; 8 bytes * 20 samples per byte
+    :RxWait   if_nc         mov     TimeDelay, #8*20                            'If RxPin active (c=0), reset sample count; 8 bytes * 20 samples/byte
                             waitcnt BitDelay, BitTime
                             test    RxPin, ina              wc                  '   Check Rx state; c=0 (not resting), c=1 (resting)
-                            djnz    TimeDelay, #:RxWait                         'Rx busy? Loop until resting 8 byte periods
-                        
-                            {Send ready signal at initial baud rate}
-                            jmp     #SendSignal                                 'Send "ready" and switch to final baud rate
-                        
-                            {Receive packet into Packet buffer}
+                            djnz    TimeDelay, #:RxWait     wz                  'Rx busy? Loop until resting 8 byte periods
+                                                                                'z=1 (prep'd for normal mode: application receiving)
+                            {Send ACK/NAK; "Ready" signal at initial baud first}
+  Acknowledge               mov     Bytes, #4                                   'Ready 1 long
+    :NextAckByte            mov     SByte, ExpectedID                           'ACK=next packet ID, NAK=previous packet ID
+                            ror     ExpectedID, #8
+                            call    #Transmit
+                            djnz    Bytes, #:NextAckByte
+                            mov     BitTime, FBitTime                           'Ensure final bit period for high-speed download
+                            
+              if_nz         jmp     #Launch {PacketData}                        'Done receiving app and RAM verified? Launch
+                                                                                'Else, normal mode
+                            {Receive packet into Packet buffer}                        
   GetNextPacket             mov     PacketAddr, #Packet                         'Reset packet pointer
     :NextPacketLong         movd    :NextPacketByte-1, PacketAddr   '4          'Point 'Packet{addr}' (dest field) at Packet buffer
                             movd    :BuffAddr, PacketAddr           '4          
@@ -81,31 +88,26 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             ror     Packet{addr}, #8                '4          '      and adjust
                             djnz    Bytes, #:NextPacketByte         '4/8        '    Loop for all bytes of long
                             add     PacketAddr, #1                  '4          '  Done, increment packet pointer for next time
-                            djnz    PacketSize, #:NextPacketLong    '4/x        'Loop for all longs of packet
+                            djnz    PacketSize, #:NextPacketLong wc '4/x        'Loop for all longs of packet; c=0 (prep'd for Check Packet ID)
 
                             {Check packet ID}
-                            cmp     PacketID, ExpectedID    wz                  'Received expected packet? z=yes
-              if_z          sub     ExpectedID, #1                              '  Yes? Ready for next; No? Ready for retransmit
+                            cmps    PacketID, ExpectedID    wz                  'Received expected packet? z=yes
+              if_z          cmps    ExpectedID, #1          wc,wr               '  (z=1) Ready for next packet (dec ExpectedID; c=new ExpectedID < 0)
+                                                                                '  or (z=0) ready for retransmit (ExpectedID untouched; c=0)
+                            {If new packet, copy to Main RAM; ignore duplicate}
+              if_z_and_nc   sub     PacketAddr, #PacketData                     'Make PacketAddr into a loop counter
+  CopyPacket  if_z_and_nc   wrlong  PacketData{addr}, MainRAMAddr               'Write packet long to Main RAM
+              if_z_and_nc   add     MainRAMAddr, #4                             '  Increment Main RAM address
+              if_z_and_nc   add     CopyPacket, IncDest                         '  Increment PacketData address
+                            djnz    PacketAddr, #CopyPacket wz                  'Loop for whole packet; z=1 for normal acknowledge mode
+                            movd    CopyPacket, #PacketData                     'Reset PacketData{addr} for next time
 
-                            {Copy packet to Main RAM; ignore duplicate}
-                            sub     PacketAddr, #PacketData                     'Make PacketAddr into a loop counter
-  CopyPacket  if_z          wrlong  PacketData{addr}, MainRAMAddr               'Write packet long to Main RAM
-              if_z          add     MainRAMAddr, #4                             '  Increment Main RAM address
-              if_z          add     CopyPacket, IncDest                         '  Increment PacketData address
-              if_z          djnz    PacketAddr, #CopyPacket                     'Loop for whole packet
-              if_z          movd    CopyPacket, #PacketData                     'Reset PacketData{addr} for next time
+              if_nc         jmp     #Acknowledge                                'Loop to acknowledge if ExpectedID >= 0
 
-                            {Send packet ACK/NAK}
-  SendSignal                mov     Bytes, #4                                   'Ready 1 long
-    :NextAckByte            mov     SByte, ExpectedID                           'ACK=next packet ID, NAK=previous packet ID
-                            ror     ExpectedID, #8
-                            call    #Transmit
-                            djnz    Bytes, #:NextAckByte
-                            mov     BitTime, FBitTime                           'Ensure final bit period for high-speed download
+                            add     ExpectedID, #1          wz                  'Verified RAM already? z=no
+              if_nz         jmp     #Acknowledge                                '  Yes? Acknowledge and launch application
 
-                            tjnz    ExpectedID, #GetNextPacket                  'Loop for all packets
-
-                            {Clear remaining RAM}
+                            {Entire Application Received; clear remaining RAM}
                             mov     Longs, EndOfRAM                             'Determine number of registers to clear
                             sub     Longs, MainRAMAddr
                             shr     Longs, #2               wz
@@ -120,20 +122,17 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             sub     Longs, #4                                   
                             wrlong  CallFrame, Longs
                             
-                            {Verify RAM}                                        '(ExpectedID = 0, MainRAMAddr = $8000)
+                            {Verify RAM; calculate checksum}                    '(ExpectedID = 0, MainRAMAddr = $8000)
     :Validate               sub     MainRAMAddr, #1                             'Decrement Main RAM Address
                             rdbyte  Bytes, MainRAMAddr                          '  Read next byte from Main RAM
                             add     ExpectedID, Bytes                           '  Adjust checksum
-                            tjnz    MainRAMAddr, #:Validate                     'Loop for all RAM
+                            tjnz    MainRAMAddr, #:Validate wz                  'Loop for all RAM; z=1 for normal acknowledge mode
+                            neg     ExpectedID, ExpectedID                      'Negate checksum
+                            
+                            jmp     #Acknowledge                                'ACK=Proper -Checksum, NAK=Improper Checksum
 
-                            {Send RAM Checksum}                                 'ACK=Proper Checksum, NAK=Improper Checksum
-  SendChecksum              mov     Bytes, #4                                   'Ready 1 long
-    :NextAckByte            mov     SByte, ExpectedID                           'ACK=next packet ID, NAK=previous packet ID
-                            ror     ExpectedID, #8
-                            call    #Transmit
-                            djnz    Bytes, #:NextAckByte
 
-                            and     ExpectedID, #$FF        wz                  'Low byte (checksum) zero? z=yes
+'                           and     ExpectedID, #$FF        wz                  'Low byte (checksum) zero? z=yes
 
                             {Receive Run/EEPROM command here}
 
@@ -141,11 +140,11 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
 
                             {Receive Run command here}
 
-                            {Launch Application}
-                            rdword  MainRAMAddr, #3<<1                          'Check program base address
+                            {Validate program base and launch application}
+  Launch                    rdword  MainRAMAddr, #3<<1                          'Check program base address
                             cmp     MainRAMAddr, #$10       wz                  'nz=Invalid
               if_nz         clkset  Restart                                     'Invalid?  Reset Propeller
-                                                                                 
+
 '                           rdbyte  Bytes, #4                                   'if xtal/pll enabled, start up now
 '                           and     Bytes, #$F8                                 '..while remaining in rcfast mode
 '                           clkset  Bytes                                        
@@ -207,7 +206,6 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   TimeDelay     res     1                                                       'Timout delay
   BitDelay      res     1                                                       'Bit time delay
   SByte         res     1                                                       'Serial Byte; received or to transmit
-' Bits          res     1                                                       'Bit counter
   Bytes                                                                         'Byte counter
   Zero          res     1                                                       'Zero value (for clearing RAM); 0 when Bytes = 0
   PacketAddr    res     1                                                       'PacketAddr
@@ -248,6 +246,8 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             
                             jmp     #$
 }
+
+'             if_c          jmp     #PacketData                                 '  Abort (PacketID < ExpectedID)? Reset Propeller
 
 
 'Possibly adjust BitTime1_5 by sample loop time to true it up
