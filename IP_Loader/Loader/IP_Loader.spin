@@ -10,13 +10,16 @@
 
 }
 
-CON
+CON               
         _clkmode = xtal1 + pll16x                                               'Standard clock mode * crystal frequency = 80 MHz
         _xinfreq = 5_000_000
 
-  MaxPacketPayload = 1392                                                       'Maximum size of packet payload (in bytes)
+  MaxPayload     = 1392                                                         'Maximum size of packet payload (in bytes)
 
-PUB Main
+  JMP_Inst       = %010111_000                                                  'JMP instruction's I+E field  value
+  TEST_Inst      = %011000_000                                                  'TEST instruction's I+E field value
+  
+PUB Main             
 
   coginit(0, @Loader, 0)
 
@@ -47,8 +50,8 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
     :RxWait   if_nc         mov     TimeDelay, #8*20                            'If RxPin active (c=0), reset sample count; 8 bytes * 20 samples/byte
                             waitcnt BitDelay, BitTime
                             test    RxPin, ina              wc                  '   Check Rx state; c=0 (not resting), c=1 (resting)
-                            djnz    TimeDelay, #:RxWait     wz                  'Rx busy? Loop until resting 8 byte periods
-                                                                                'z=1 (prep'd for normal mode: application receiving)
+                            djnz    TimeDelay, #:RxWait                         'Rx busy? Loop until resting 8 byte periods
+
                             {Send ACK/NAK; "Ready" signal at initial baud first}
   Acknowledge               mov     Bytes, #4                                   'Ready 1 long
     :NextAckByte            mov     SByte, ExpectedID                           'ACK=next packet ID, NAK=previous packet ID
@@ -57,8 +60,6 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             djnz    Bytes, #:NextAckByte
                             mov     BitTime, FBitTime                           'Ensure final bit period for high-speed download
                             
-              if_nz         jmp     #Launch {PacketData}                        'Done receiving app and RAM verified? Launch
-                                                                                'Else, normal mode
                             {Receive packet into Packet buffer}                        
   GetNextPacket             mov     PacketAddr, #Packet                         'Reset packet pointer
     :NextPacketLong         movd    :NextPacketByte-1, PacketAddr   '4          'Point 'Packet{addr}' (dest field) at Packet buffer
@@ -73,7 +74,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
     :RxWait                 muxc    SByte, #%1_1000_0000    wz      '4                  'Wait for Rx start bit (falling edge); Prep SByte for 8 bits
                             test    RxPin, ina              wc      '4![12/x]           ' Check Rx state; c=0 (not resting), c=1 (resting)
               if_z_or_c     djnz    TimeDelay, #:RxWait             '4/x                ' No start bit (Z OR C)? loop until timeout
-              if_z_or_c     clkset  Restart                         'x/4                ' No start bit and timed-out? Reset Propeller
+              if_z_or_c     jmp     #Restart                        'x/4                ' No start bit and timed-out? Restart Propeller
                             add     BitDelay, cnt                   '4                  'Set time to...                   
     :RxBit                  waitcnt BitDelay, BitTime               '6+                 'Wait for center of bit
     
@@ -99,13 +100,13 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   CopyPacket  if_z_and_nc   wrlong  PacketData{addr}, MainRAMAddr               'Write packet long to Main RAM
               if_z_and_nc   add     MainRAMAddr, #4                             '  Increment Main RAM address
               if_z_and_nc   add     CopyPacket, IncDest                         '  Increment PacketData address
-                            djnz    PacketAddr, #CopyPacket wz                  'Loop for whole packet; z=1 for normal acknowledge mode
-                            movd    CopyPacket, #PacketData                     'Reset PacketData{addr} for next time
+              if_z_and_nc   djnz    PacketAddr, #CopyPacket                     'Loop for whole packet
+              if_z_and_nc   movd    CopyPacket, #PacketData                     'Reset PacketData{addr} for next time
 
               if_nc         jmp     #Acknowledge                                'Loop to acknowledge if ExpectedID >= 0
 
                             add     ExpectedID, #1          wz                  'Verified RAM already? z=no
-              if_nz         jmp     #Acknowledge                                '  Yes? Acknowledge and launch application
+              if_nz         jmp     #Launch {PacketData}                        '  Yes? Run packet code just delivered
 
                             {Entire Application Received; clear remaining RAM}
                             mov     Longs, EndOfRAM                             'Determine number of registers to clear
@@ -126,12 +127,13 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
     :Validate               sub     MainRAMAddr, #1                             'Decrement Main RAM Address
                             rdbyte  Bytes, MainRAMAddr                          '  Read next byte from Main RAM
                             add     ExpectedID, Bytes                           '  Adjust checksum
-                            tjnz    MainRAMAddr, #:Validate wz                  'Loop for all RAM; z=1 for normal acknowledge mode
+                            tjnz    MainRAMAddr, #:Validate                     'Loop for all RAM
                             neg     ExpectedID, ExpectedID                      'Negate checksum
                             
                             jmp     #Acknowledge                                'ACK=Proper -Checksum, NAK=Improper Checksum
 
-
+  Restart                   clkset  Reset                                       'Restart Propeller
+  
 '                           and     ExpectedID, #$FF        wz                  'Low byte (checksum) zero? z=yes
 
                             {Receive Run/EEPROM command here}
@@ -141,7 +143,17 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             {Receive Run command here}
 
                             {Validate program base and launch application}
-  Launch                    rdword  MainRAMAddr, #3<<1                          'Check program base address
+                            {The following code "may" be executed twice (if final Launch packet not received)
+                             The first pass sets the Timeout feature to call this code (in the case noted above)
+                             and modifies to continue through acknowledgment, the second pass (if it happens) will
+                             effectively launch the target application without further communication witht the host.}
+  Launch                    sub     ExpectedID, #1                              'Set ExpectedID to next value
+                            movi    Restart, #JMP_Inst                          'Timeout can launch now; replace timout restart with "jmp #Launch"
+                            movs    Restart, #Launch                            
+                            movi    $+1, #TEST_Inst                             '"NOP" next inst; we'll run through next time
+                            jmp     #Acknowledge                                'Jump (pass 1) to send acknowledgement; else continue (pass 2)
+                            
+                            rdword  MainRAMAddr, #3<<1                          'Check program base address
                             cmp     MainRAMAddr, #$10       wz                  'nz=Invalid
               if_nz         clkset  Restart                                     'Invalid?  Reset Propeller
 
@@ -186,7 +198,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   MainRAMAddr   long    0                                                       'Address in Main RAM
 
 {Constants}
-  Restart       long    %1000_0000                                              'Reboot value (for CLK register)
+  Reset         long    %1000_0000                                              'Propeller restart value (for CLK register)
   IncDest       long    %1_0_00000000                                           'Value to increment a register's destination field
   EndOfRAM      long    $8000                                                   'Address of end of RAM+1
   CallFrame     long    $FFF9_FFFF                                              'Initial call frame value
@@ -212,7 +224,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   Packet                                                                        'Packet buffer
     PacketSize  res     1                                                       '  Header:  Packet Size
     PacketID    res     1                                                       '  Header:  Packet ID number
-    PacketData  res     (MaxPacketPayload / 4) - 2                              '  Payload: Packet data (longs); (max size in longs) - header
+    PacketData  res     (MaxPayload / 4) - 2                                    '  Payload: Packet data (longs); (max size in longs) - header
 
 
 ' CalcBitTime           mov     BitTime1_5, BitTime                             'Calculate 1.5x bit time (BitTime * 3 / 2)
@@ -248,6 +260,9 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
 }
 
 '             if_c          jmp     #PacketData                                 '  Abort (PacketID < ExpectedID)? Reset Propeller
+
+'             if_nz         jmp     #Launch {PacketData}                        'Done receiving app and RAM verified? Launch
+                                                                                'Else, normal mode
 
 
 'Possibly adjust BitTime1_5 by sample loop time to true it up
