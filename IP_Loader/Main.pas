@@ -281,6 +281,39 @@ const
 
    {----------------}
 
+   function TransmitPacket: Integer;
+   {Transmit (and retransmit if necessary) the packet in TxBuf, waiting for non-retransmit response or timeout.
+    Returns response value (if any), raises exception otherwise.}
+   var
+     Retry : Integer;
+   begin
+     Retry := 3;
+     repeat {(Re)Transmit packet}                                                           {  Send application image packet, get acknowledgement, retransmit as necessary}
+       if Retry < 3 then UpdateProgress(-1);
+
+       UpdateProgress(+1, 'Sending packet: ' + (TotalPackets-PacketID+1).ToString + ' of ' + TotalPackets.ToString);
+
+       SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' Transmitting packet ' + PacketID.ToString, True);
+
+       Time.Left(Trunc((TxBuffLength*4*10/FinalBaud)*1000));                                {    Mark required Tx time}
+       if not XBee.SendUDP(TxBuf, True, False) then
+         raise EHardDownload.Create('Error: Can not transmit application image!');
+
+       SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for packet acknowledgement', True);
+
+       Acknowledged := XBee.ReceiveUDP(RxBuf, DynamicSerTimeout) and (Length(RxBuf) = 4);   {    Wait for positive/negative acknowledgement, or timeout}
+       RemainingTxTime := Time.Left;                                                        {    Check remaining time to transmit (should be 0 ms)}
+       if RemainingTxTime > 0 then SendDebugMessage('          - ERROR: Remaining Tx Time: ' + RemainingTxTime.ToString, True);
+       dec(Retry);                                                                          {  Loop and retransmit until timely non-retransmit acknowledgement received, or retry count exhausted}
+     {Repeat - (Re)Transmit packet...}
+     { TODO : Revisit phase variance timing trap }
+     until ( Acknowledged and (RemainingTxTime = 0) and (Long(@RxBuf[0]) <> Long(@TxBuf[4])) ) or (Retry = 0);
+     if not ( Acknowledged and (RemainingTxTime = 0) and (Long(@RxBuf[0]) <> Long(@TxBuf[4])) ) then
+       raise EHardDownload.Create('Error: connection lost!');                               {  No acknowledgement received? Error}
+     Result := Long(@RxBuf[0]);
+   end;
+
+   {----------------}
 begin
   try {Handle download errors}
     if FBinSize = 0 then exit;
@@ -304,7 +337,7 @@ begin
       for i := 0 to high(InitCallFrame) do inc(Checksum, InitCallFrame[i]);
 
       {Initialize Progress Bar to proper size}
-      InitializeProgress(7 + TotalPackets);
+      InitializeProgress(9 + TotalPackets);
 
       {Begin download process}
       if not XBee.ConnectSerialUDP then
@@ -410,49 +443,47 @@ begin
           Move(TxBuffLength, TxBuf[0], 4);                                                       {  Store Packet Size (longs)}
           Move(PacketID, TxBuf[4], 4);                                                           {  Store Packet ID}
           Move(FBinImage[i*4], TxBuf[2*4], (TxBuffLength-2)*4);                                  {  Store section of data}
-          Retry := 4;
-          repeat {(Re)Transmit packet}                                                           {  Send application image packet, get acknowledgement, retransmit as necessary}
-            if Retry < 4 then UpdateProgress(-1);
-
-            UpdateProgress(+1, 'Sending packet: ' + (TotalPackets-PacketID+1).ToString + ' of ' + TotalPackets.ToString);
-
-            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' Transmitting packet ' + PacketID.ToString, True);
-
-            Time.Left(Trunc((TxBuffLength*4*10/FinalBaud)*1000));                                {    Mark required Tx time}
-            if not XBee.SendUDP(TxBuf, True, False) then
-              raise EHardDownload.Create('Error: Can not transmit application image!');
-
-            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for packet acknowledgement', True);
-
-            Acknowledged := XBee.ReceiveUDP(RxBuf, DynamicSerTimeout) and (Length(RxBuf) = 4);   {    Wait for positive/negative acknowledgement, or timeout}
-            RemainingTxTime := Time.Left;                                                        {    Check remaining time to transmit (should be 0 ms)}
-            if RemainingTxTime > 0 then SendDebugMessage('          - ERROR: Remaining Tx Time: ' + RemainingTxTime.ToString, True);
-            dec(Retry);                                                                          {  Loop and retransmit until timely positive acknowledgement received, or retry count exhausted}
-          {Repeat - (Re)Transmit packet...}                                                      {  NOTE: Since it's possible to have missed acknowledgement for packet 1 (last packet), during last packet we'll naturally retry and accept packet acknowledgement or RAM Checksum acknowledgement}
-          { TODO : Revisit phase variance timing trap }
-          until ( Acknowledged and (((RemainingTxTime = 0) and (Long(@RxBuf[0]) = PacketID-1)) or ((Retry < 3) and (Long(@RxBuf[0]) > 1000))) ) or (Retry = 0);
-          if Retry = 0 then
-            raise EHardDownload.Create('Error: connection lost!');                               {  No acknowledgement received? Error}
+          if TransmitPacket <> PacketID-1 then                                                   {  Transmit packet (retransmit as necessary)}
+            raise EHardDownload.Create('Error: communication failed!');                          {    Error if unexpected response}
           inc(i, TxBuffLength-2);                                                                {  Increment image index}
           dec(PacketID);                                                                         {  Decrement Packet ID (to next packet)}
         {repeat - Transmit target application packets...}
         until PacketID = 0;                                                                      {Loop until done}
 
-        {Receive RAM checksum pass/fail}
-
         SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for RAM checksum', True);
-
-        { TODO : Think about possible need for retransmission of RAM checksum here. }
         UpdateProgress(+1, 'Verifying RAM');
 
-        if Long(@RxBuf[0]) = 0 then
-          begin {Received positive acknowledgement on last packet; look for RAM checksum acknowledgment}
-          if not XBee.ReceiveUDP(RxBuf, SerTimeout) or (Length(RxBuf) <> 4) then
-            raise EHardDownload.Create('Error: No final response!');
-          end;
-        {Received RAM Checksum acknowledgement (now or during last packet retransmit)}
-        if Long(@RxBuf[0]) <> Checksum then
-          raise EHardDownload.Create('Error: RAM Checksum Error!');
+        {Send verify RAM command}                                                                {Verify RAM Checksum}
+        TxBuffLength := 2;                                                                       {Set length for empty payload}
+        SetLength(TxBuf, TxBuffLength*4);                                                        {Set buffer length (Packet Length) (in longs)}
+        Move(TxBuffLength, TxBuf[0], 4);                                                         {Store Packet Size (longs)}
+        Move(PacketID, TxBuf[4], 4);                                                             {Store Packet ID}
+        if TransmitPacket <> -Checksum then                                                      {Transmit packet (retransmit as necessary)}
+          raise EHardDownload.Create('Error: RAM Checksum Failure!');                            {  Error if RAM Checksum differs}
+        PacketID := -Checksum;                                                                   {Ready next packet; ID's by checksum now }
+
+        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Launching application (step 1)', True);
+        UpdateProgress(+1, 'Launching application (step 1)');
+
+        {Send verified/launch command}                                                           {Verified/Launch}
+        TxBuffLength := 2;                                                                       {Set length for empty payload}
+        SetLength(TxBuf, TxBuffLength*4);                                                        {Set buffer length (Packet Length) (in longs)}
+        Move(TxBuffLength, TxBuf[0], 4);                                                         {Store Packet Size (longs)}
+        Move(PacketID, TxBuf[4], 4);                                                             {Store Packet ID}
+        if TransmitPacket <> PacketID-1 then                                                     {Transmit packet (retransmit as necessary)}
+          raise EHardDownload.Create('Error: communication failed!');                            {  Error if unexpected response}
+        dec(PacketID);                                                                           {Ready next packet}
+
+        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Launching application (step 2)', True);
+        UpdateProgress(+1, 'Launching application (step 2)');
+
+        {Send launch command}                                                                    {Verified}
+        TxBuffLength := 2;                                                                       {Set length for empty payload}
+        SetLength(TxBuf, TxBuffLength*4);                                                        {Set buffer length (Packet Length) (in longs)}
+        Move(TxBuffLength, TxBuf[0], 4);                                                         {Store Packet Size (longs)}
+        Move(PacketID, TxBuf[4], 4);                                                             {Store Packet ID}
+        if TransmitPacket <> PacketID-1 then                                                     {Transmit packet (retransmit as necessary)}
+          raise EHardDownload.Create('Error: communication failed!');                            {  Error if unexpected response}
 
         UpdateProgress(+1, 'Success');
 
@@ -820,35 +851,35 @@ const
   it assists with the remainder of the download (at a faster speed and with more relaxed interstitial timing conducive of Internet Protocol delivery.
   This memory image isn't used as-is; before download, it is first adjusted to contain special values assigned by this host (communication timing and
   synchronization values) and then is translated into an optimized Propeller Download Stream understandable by the Propeller ROM-based boot loader.}
-  RawLoaderAppSize = 109;
-  RawLoaderImage : array[0..435] of byte = ($00,$B4,$C4,$04,$6F,$F9,$10,$00,$B4,$01,$BC,$01,$AC,$01,$C0,$01,
-                                            $A4,$01,$02,$00,$9C,$01,$00,$00,$5F,$E8,$BF,$A0,$5F,$EC,$BF,$A0,
-                                            $01,$E8,$FF,$68,$01,$EC,$FF,$68,$60,$CC,$BC,$A1,$01,$CC,$FC,$28,
-                                            $F1,$CD,$BC,$80,$A0,$CA,$CC,$A0,$60,$CC,$BC,$F8,$F2,$BD,$3C,$61,
-                                            $07,$CA,$FC,$E4,$2D,$00,$7C,$5C,$6A,$D2,$FC,$A0,$69,$22,$BC,$54,
-                                            $69,$40,$BC,$54,$69,$42,$BC,$54,$04,$D0,$FC,$A0,$00,$D4,$FC,$A0,
-                                            $63,$CA,$BC,$A0,$62,$CC,$BC,$A1,$00,$CE,$FC,$A0,$80,$CF,$FC,$72,
-                                            $F2,$BD,$3C,$61,$15,$CA,$F8,$E4,$00,$B2,$78,$0C,$F1,$CD,$BC,$80,
-                                            $60,$CC,$BC,$F8,$01,$E8,$FF,$6C,$F2,$BD,$3C,$61,$00,$CF,$FC,$70,
-                                            $01,$CE,$FC,$29,$1A,$00,$4C,$5C,$67,$D4,$BC,$68,$08,$D4,$FC,$20,
-                                            $12,$D0,$FC,$E4,$01,$D2,$FC,$80,$0D,$D4,$FC,$E4,$64,$D6,$3C,$86,
-                                            $01,$C8,$E8,$84,$6C,$D2,$FC,$84,$58,$D8,$28,$08,$04,$B0,$E8,$80,
-                                            $5A,$50,$A8,$80,$28,$D2,$E8,$E4,$6C,$50,$E8,$54,$04,$D0,$FC,$A0,
-                                            $64,$CE,$BC,$A0,$08,$C8,$FC,$20,$4D,$AC,$FC,$5C,$2E,$D0,$FC,$E4,
-                                            $61,$C0,$BC,$A0,$0C,$C8,$7C,$E8,$5B,$AE,$BC,$A0,$58,$AE,$BC,$84,
-                                            $02,$AE,$FC,$2A,$58,$D0,$14,$08,$04,$B0,$D4,$80,$37,$AE,$D4,$E4,
-                                            $0A,$AE,$FC,$04,$04,$AE,$FC,$84,$57,$B8,$3C,$08,$04,$AE,$FC,$84,
-                                            $57,$B8,$3C,$08,$01,$B0,$FC,$84,$58,$D0,$BC,$00,$68,$C8,$BC,$80,
-                                            $3F,$B0,$7C,$E8,$04,$D0,$FC,$A0,$64,$CE,$BC,$A0,$08,$C8,$FC,$20,
-                                            $4D,$AC,$FC,$5C,$44,$D0,$FC,$E4,$FF,$C8,$FC,$62,$06,$B0,$FC,$04,
-                                            $10,$B0,$7C,$86,$00,$B2,$54,$0C,$02,$BA,$7C,$0C,$FF,$CE,$FC,$60,
-                                            $00,$CF,$FC,$68,$01,$CE,$FC,$2C,$60,$CC,$BC,$A0,$F1,$CD,$BC,$80,
-                                            $01,$CE,$FC,$29,$60,$CC,$BC,$F8,$5F,$E8,$BF,$70,$52,$CE,$7C,$E8,
-                                            $00,$00,$7C,$5C,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,
-                                            $00,$02,$00,$00,$00,$80,$00,$00,$FF,$FF,$F9,$FF,$10,$C0,$07,$00,
-                                            $00,$00,$00,$80,$00,$00,$00,$40,$B6,$02,$00,$00,$5B,$01,$00,$00,
-                                            $08,$02,$00,$00,$00,$2D,$31,$01,$00,$00,$00,$00,$35,$C7,$08,$35,
-                                            $2C,$32,$00,$00);
+  RawLoaderAppSize = 112;
+  RawLoaderImage : array[0..447] of byte = ($00,$B4,$C4,$04,$6F,$94,$10,$00,$C0,$01,$C8,$01,$B8,$01,$CC,$01,
+                                            $B0,$01,$02,$00,$A8,$01,$00,$00,$62,$E8,$BF,$A0,$62,$EC,$BF,$A0,
+                                            $01,$E8,$FF,$68,$01,$EC,$FF,$68,$63,$D2,$BC,$A1,$01,$D2,$FC,$28,
+                                            $F1,$D3,$BC,$80,$A0,$D0,$CC,$A0,$63,$D2,$BC,$F8,$F2,$C3,$3C,$61,
+                                            $07,$D0,$FC,$E4,$04,$D6,$FC,$A0,$67,$D4,$BC,$A0,$08,$CE,$FC,$20,
+                                            $50,$B2,$FC,$5C,$0C,$D6,$FC,$E4,$64,$C6,$BC,$A0,$6D,$D8,$FC,$A0,
+                                            $6C,$2C,$BC,$54,$6C,$4A,$BC,$54,$6C,$4C,$BC,$54,$04,$D6,$FC,$A0,
+                                            $00,$DA,$FC,$A0,$66,$D0,$BC,$A0,$65,$D2,$BC,$A1,$00,$D4,$FC,$A0,
+                                            $80,$D5,$FC,$72,$F2,$C3,$3C,$61,$1A,$D0,$F8,$E4,$46,$00,$78,$5C,
+                                            $F1,$D3,$BC,$80,$63,$D2,$BC,$F8,$01,$E8,$FF,$6C,$F2,$C3,$3C,$61,
+                                            $00,$D5,$FC,$70,$01,$D4,$FC,$29,$1F,$00,$4C,$5C,$6A,$DA,$BC,$68,
+                                            $08,$DA,$FC,$20,$17,$D6,$FC,$E4,$01,$D8,$FC,$80,$12,$DA,$FC,$E5,
+                                            $67,$DC,$3C,$C2,$01,$CE,$E8,$C1,$6F,$D8,$C8,$84,$5B,$DE,$08,$08,
+                                            $04,$B6,$C8,$80,$5D,$5A,$88,$80,$2D,$D8,$C8,$E4,$6F,$5A,$C8,$54,
+                                            $0B,$00,$4C,$5C,$01,$CE,$FC,$82,$47,$00,$54,$5C,$5E,$B4,$BC,$A0,
+                                            $5B,$B4,$BC,$84,$02,$B4,$FC,$2A,$5B,$D6,$14,$08,$04,$B6,$D4,$80,
+                                            $38,$B4,$D4,$E4,$0A,$B4,$FC,$04,$04,$B4,$FC,$84,$5A,$BE,$3C,$08,
+                                            $04,$B4,$FC,$84,$5A,$BE,$3C,$08,$01,$B6,$FC,$84,$5B,$D6,$BC,$00,
+                                            $6B,$CE,$BC,$80,$40,$B6,$7C,$E8,$67,$CE,$BC,$A4,$0B,$00,$7C,$5C,
+                                            $00,$B8,$7C,$0C,$01,$CE,$FC,$84,$B8,$8C,$FC,$58,$47,$8C,$FC,$50,
+                                            $C0,$96,$FC,$58,$0B,$00,$7C,$5C,$06,$B6,$FC,$04,$10,$B6,$7C,$86,
+                                            $00,$8C,$54,$0C,$02,$C0,$7C,$0C,$FF,$D4,$FC,$60,$00,$D5,$FC,$68,
+                                            $01,$D4,$FC,$2C,$63,$D2,$BC,$A0,$F1,$D3,$BC,$80,$01,$D4,$FC,$29,
+                                            $63,$D2,$BC,$F8,$62,$E8,$BF,$70,$55,$D4,$7C,$E8,$00,$00,$7C,$5C,
+                                            $00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$02,$00,$00,
+                                            $00,$80,$00,$00,$FF,$FF,$F9,$FF,$10,$C0,$07,$00,$00,$00,$00,$80,
+                                            $00,$00,$00,$40,$B6,$02,$00,$00,$5B,$01,$00,$00,$08,$02,$00,$00,
+                                            $00,$2D,$31,$01,$00,$00,$00,$00,$35,$C7,$08,$35,$2C,$32,$00,$00);
 
   RawLoaderInitOffset = -(7*4);          {Offset (in bytes) from end of Loader Image pointing to where host-initialized values exist.
                                           Host-Initialized values are: Initial Bit Time, Final Bit Time, 1.5x Bit Time, Timeout, and
