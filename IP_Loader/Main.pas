@@ -297,7 +297,7 @@ const
 
        Time.Left(Trunc((TxBuffLength*4*10/FinalBaud)*1000));                                {    Mark required Tx time}
        if not XBee.SendUDP(TxBuf, True, False) then
-         raise EHardDownload.Create('Error: Can not transmit application image!');
+         raise EHardDownload.Create('Error: Can not transmit packet!');
 
        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for packet acknowledgement', True);
 
@@ -482,9 +482,7 @@ begin
         SetLength(TxBuf, TxBuffLength*4);                                                        {Set buffer length (Packet Length) (in longs)}
         Move(TxBuffLength, TxBuf[0], 4);                                                         {Store Packet Size (longs)}
         Move(PacketID, TxBuf[4], 4);                                                             {Store Packet ID}
-        if TransmitPacket <> PacketID-1 then                                                     {Transmit packet (retransmit as necessary)}
-          raise EHardDownload.Create('Error: communication failed!');                            {  Error if unexpected response}
-
+        XBee.SendUDP(TxBuf, True, False);                                                        {Transmit last packet (Launch step 2); no retransmission}
         UpdateProgress(+1, 'Success');
 
       finally {UDP Connected}

@@ -134,10 +134,6 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
 
   Restart                   clkset  Reset                                       'Restart Propeller
   
-'                           and     ExpectedID, #$FF        wz                  'Low byte (checksum) zero? z=yes
-
-                            {Receive Run/EEPROM command here}
-
                             {Send EEPROM Checksum ACK/NAK here}
 
                             {Receive Run command here}
