@@ -56,7 +56,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   Acknowledge               mov     Bytes, #4                                           'Ready 1 long
     :NextAckByte            mov     SByte, ExpectedID                                   'ACK=next packet ID, NAK=previous packet ID
                             ror     ExpectedID, #8
-    {Transmit}              and     SByte, #$FF                                         '  Retain low byte only
+                            and     SByte, #$FF                                         '  Retain low byte only
                             or      SByte, #%1_0000_0000                                '  Append stop bit; also acts as loop trigger
                             shl     SByte, #1                                           '  Prepend start bit
                             mov     BitDelay, BitTime                                   '  Prep first bit window / ensure prev. stop bit window
@@ -66,35 +66,43 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             muxc    outa, TxPin                     '4![18+]            '    Output bit
                             tjnz    SByte, #:TxBit                  '4/8                '  Loop for next bit
                             djnz    Bytes, #:NextAckByte                                'Loop for next byte
+
+                            {Set final bit period and failsafe timeout}
                             mov     BitTime, FBitTime                                   'Ensure final bit period for high-speed download
+                            movs    :NextPacketByte, #Failsafe      '4                  'Reset timeout to Failsafe; restart Propeller if comm. lost between packets
                             
                             {Receive packet into Packet buffer}                        
-    {GetNextPacket}         mov     PacketAddr, #Packet                                 'Reset packet pointer
+                            mov     PacketAddr, #Packet                                 'Reset packet pointer
     :NextPacketLong         movd    :NextPacketByte-1, PacketAddr   '4                  'Point 'Packet{addr}' (dest field) at Packet buffer
                             movd    :BuffAddr, PacketAddr           '4          
                             movd    :BuffAddr+1, PacketAddr         '4
                             mov     Bytes, #4                       '4                  '  Ready for 1 long
                             mov     Packet{addr}, #0                '4                  '  Pre-clear 1 buffer long
-    :NextPacketByte         mov     TimeDelay, Timeout              '4                  '  Get byte (resets if timeout); Reset timeout delay
+    :NextPacketByte         mov     TimeDelay, Timeout{addr}        '4                  '  Set timeout; FailSafe on entry, EndOfPacket on reentry
                             mov     BitDelay, BitTime1_5    wc      '4                  '    Prep first bit sample window; clear c for first :RxWait
-    {Receive}               mov     SByte, #0                       '4
+                            mov     SByte, #0                       '4
     :RxWait                 muxc    SByte, #%0_1000_0000    wz      '4                  '    Wait for Rx start bit (falling edge); Prep SByte for 8 bits
                             test    RxPin, ina              wc      '4![12/x]           '      Check Rx state; c=0 (not resting), c=1 (resting)
-              if_z_or_c     djnz    TimeDelay, #:RxWait             '4/x                '    No start bit (Z OR C)? loop until timeout
-              if_z_or_c     jmp     #Restart                        'x/4                '    No start bit and timed-out? Restart Propeller
+              if_z_or_c     djnz    TimeDelay, #:RxWait             '4/x                '    No start bit (z or c)? loop until timeout
+              if_z_or_c     jmp     #TimedOut                       'x/4                '    No start bit (z or c) and timed-out? Exit
                             add     BitDelay, cnt                   '4                  '    Set time to...                   
     :RxBit                  waitcnt BitDelay, BitTime               '6+                 '    Wait for center of bit
 {debug}                     xor     outa, #1                                             
-                            test    RxPin, ina              wc      '4![22/70/98+]      '      Sample bit; c=0/1
+                            test    RxPin, ina              wc      '4![22/74/102+]     '      Sample bit; c=0/1
                             muxc    SByte, #%1_0000_0000            '4                  '      Store bit
                             shr     SByte, #1               wc      '4                  '      Adjust result; c=0 (continue), c=1 (done)
               if_nc         jmp     #:RxBit                         '4                  '    Continue? Loop until done
     :BuffAddr               or      Packet{addr}, SByte             '4                  '    store into long (low byte first)
-                            ror     Packet{addr}, #8                '4                  '    and adjust
-                            djnz    Bytes, #:NextPacketByte         '4/8                '  Loop for all bytes of long
+                            ror     Packet{addr}, #8                '4                  '    and adjust long
+                            movs    :NextPacketByte, #EndOfPacket   '4                  '    Replace Failsafe timeout with EndOfPacket timeout
+                            djnz    Bytes, #:NextPacketByte wc      '4/8                '  Loop for all bytes of long; c=0 (prep'd for Check Packet ID)
                             add     PacketAddr, #1                  '4                  '  Done, increment packet pointer for next time
-                            djnz    PacketSize, #:NextPacketLong wc '4/x                'Loop for all longs of packet; c=0 (prep'd for Check Packet ID)
+                            jmp     #:NextPacketLong                '4                  'Loop in case more arrives
 
+                            {Timed out; no packet?}
+  TimedOut                  cmp     EndOfPacket, TimeDelay  wc                          'Timed out; c=no packet, nc=end of packet
+              if_c          clkset  Reset                                               '  If no packet, restart Propeller
+                            
                             {Check packet ID}
                             cmps    PacketID, ExpectedID    wz                          'Received expected packet? z=yes
               if_z          cmps    ExpectedID, #1          wc,wr                       '  (z=1) Ready for next packet (dec ExpectedID; c=new ExpectedID < 0)
@@ -136,7 +144,6 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                                                                                          
                             jmp     #Acknowledge                                        'ACK=Proper -Checksum, NAK=Improper Checksum
                                                                                          
-  Restart                   clkset  Reset                                               'Restart Propeller
   
                             {Send EEPROM Checksum ACK/NAK here}
 
@@ -148,14 +155,14 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                              and modifies to continue through acknowledgment, the second pass (if it happens) will
                              effectively launch the target application without further communication witht the host.}
   Launch                    sub     ExpectedID, #1                                      'Set ExpectedID to next value
-                            movi    Restart, #JMP_Inst                                  'Timeout can launch now; replace timout restart with "jmp #Launch"
-                            movs    Restart, #Launch                                     
+                            movi    TimedOut+1, #JMP_Inst                               'Timeout can safely launch now; replace timout restart with "jmp #Launch"
+                            movs    TimedOut+1, #Launch                                  
                             movi    $+1, #TEST_Inst                                     '"NOP" next inst; we'll run through next time
                             jmp     #Acknowledge                                        'Jump (pass 1) to send acknowledgement; else continue (pass 2)
                                                                                          
                             rdword  MainRAMAddr, #3<<1                                  'Check program base address
                             cmp     MainRAMAddr, #$10       wz                          'nz=Invalid
-              if_nz         clkset  Restart                                             'Invalid?  Reset Propeller
+              if_nz         clkset  Reset                                               'Invalid?  Reset Propeller
                                                                                          
 '                           rdbyte  Bytes, #4                                           'if xtal/pll enabled, start up now
 '                           and     Bytes, #$F8                                         '..while remaining in rcfast mode
@@ -190,7 +197,9 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
     IBitTime    long    80_000_000 / 115_200                     '[host init]           '  Initial bit period (at startup)
     FBitTime    long    80_000_000 / 230_400                     '[host init]           '  Final bit period (for download)
   BitTime1_5    long    TRUNC(1.5 * 80_000_000.0 / 230_400.0)    '[host init]           '1.5x bit period; used to align to center of received bits
-  Timeout       long    80_000_000 * 4 / (2*8)                   '[host init]           'Timeout period (2 seconds worth of RxByte loop iterations)
+  Timeout                                                                               
+    Failsafe    long    2{s} * 80_000_000 / (3{inst} * 4{clks})  '[host init]           'Failsafe timeout (2 seconds worth of RxWait loop iterations)
+    EndOfPacket long    2{B} * 80_000_000 / 230_400 * 10{bits}   '[host init]           'EndOfPacket timeout (2 bytes worth of RxWait loop iterations)
   ExpectedID    long    0                                        '[host init]           'Expected Packet ID
                                                                                          
 {Reserved Variables}                                                                     
@@ -201,9 +210,8 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   Zero          res     1                                                               'Zero value (for clearing RAM); 0 when Bytes = 0
   PacketAddr    res     1                                                               'PacketAddr
   Packet                                                                                'Packet buffer
-    PacketSize  res     1                                                               '  Header:  Packet Size
     PacketID    res     1                                                               '  Header:  Packet ID number
-    PacketData  res     (MaxPayload / 4) - 2                                            '  Payload: Packet data (longs); (max size in longs) - header
+    PacketData  res     (MaxPayload / 4) - 1                                            '  Payload: Packet data (longs); (max size in longs) - header
                                                                                          
                                                                                          
 ' CalcBitTime           mov     BitTime1_5, BitTime                                     'Calculate 1.5x bit time (BitTime * 3 / 2)
