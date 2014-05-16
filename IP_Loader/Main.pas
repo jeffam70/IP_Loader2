@@ -850,7 +850,7 @@ const
   This memory image isn't used as-is; before download, it is first adjusted to contain special values assigned by this host (communication timing and
   synchronization values) and then is translated into an optimized Propeller Download Stream understandable by the Propeller ROM-based boot loader.}
   RawLoaderAppSize = 110;
-  RawLoaderImage : array[0..439] of byte = ($00,$B4,$C4,$04,$6F,$A0,$10,$00,$B8,$01,$C0,$01,$B0,$01,$C4,$01,
+  RawLoaderImage : array[0..439] of byte = ($00,$B4,$C4,$04,$6F,$A1,$10,$00,$B8,$01,$C0,$01,$B0,$01,$C4,$01,
                                             $A8,$01,$02,$00,$A0,$01,$00,$00,$60,$E8,$BF,$A0,$60,$EC,$BF,$A0,
                                             $01,$E8,$FF,$68,$01,$EC,$FF,$68,$61,$CE,$BC,$A1,$01,$CE,$FC,$28,
                                             $F1,$CF,$BC,$80,$A0,$CC,$CC,$A0,$61,$CE,$BC,$F8,$F2,$BF,$3C,$61,
@@ -860,7 +860,7 @@ const
                                             $13,$D0,$7C,$E8,$0C,$D2,$FC,$E4,$62,$C2,$BC,$A0,$6B,$D4,$FC,$A0,
                                             $6A,$3C,$BC,$54,$6A,$5A,$BC,$54,$6A,$5C,$BC,$54,$04,$D2,$FC,$A0,
                                             $00,$D6,$FC,$A0,$64,$CC,$BC,$A0,$63,$CE,$BC,$A1,$00,$D0,$FC,$A0,
-                                            $80,$D1,$FC,$72,$F2,$BF,$3C,$61,$22,$CC,$F8,$E4,$4E,$00,$78,$5C,
+                                            $80,$D0,$FC,$72,$F2,$BF,$3C,$61,$22,$CC,$F8,$E4,$4E,$00,$78,$5C,
                                             $F1,$CF,$BC,$80,$61,$CE,$BC,$F8,$01,$E8,$FF,$6C,$F2,$BF,$3C,$61,
                                             $00,$D1,$FC,$70,$01,$D0,$FC,$29,$27,$00,$4C,$5C,$68,$D6,$BC,$68,
                                             $08,$D6,$FC,$20,$1F,$D2,$FC,$E4,$01,$D4,$FC,$80,$1A,$D6,$FC,$E5,

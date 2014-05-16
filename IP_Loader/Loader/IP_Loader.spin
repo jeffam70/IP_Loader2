@@ -77,15 +77,15 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             mov     Packet{addr}, #0                '4                  '  Pre-clear 1 buffer long
     :NextPacketByte         mov     TimeDelay, Timeout              '4                  '  Get byte (resets if timeout); Reset timeout delay
                             mov     BitDelay, BitTime1_5    wc      '4                  '    Prep first bit sample window; clear c for first :RxWait
-                            mov     SByte, #0
-    :RxWait                 muxc    SByte, #%1_1000_0000    wz      '4                  '    Wait for Rx start bit (falling edge); Prep SByte for 8 bits
+    {Receive}               mov     SByte, #0                       '4
+    :RxWait                 muxc    SByte, #%0_1000_0000    wz      '4                  '    Wait for Rx start bit (falling edge); Prep SByte for 8 bits
                             test    RxPin, ina              wc      '4![12/x]           '      Check Rx state; c=0 (not resting), c=1 (resting)
               if_z_or_c     djnz    TimeDelay, #:RxWait             '4/x                '    No start bit (Z OR C)? loop until timeout
               if_z_or_c     jmp     #Restart                        'x/4                '    No start bit and timed-out? Restart Propeller
                             add     BitDelay, cnt                   '4                  '    Set time to...                   
     :RxBit                  waitcnt BitDelay, BitTime               '6+                 '    Wait for center of bit
 {debug}                     xor     outa, #1                                             
-                            test    RxPin, ina              wc      '4![22/82/110+]     '      Sample bit; c=0/1
+                            test    RxPin, ina              wc      '4![22/70/98+]      '      Sample bit; c=0/1
                             muxc    SByte, #%1_0000_0000            '4                  '      Store bit
                             shr     SByte, #1               wc      '4                  '      Adjust result; c=0 (continue), c=1 (done)
               if_nc         jmp     #:RxBit                         '4                  '    Continue? Loop until done
