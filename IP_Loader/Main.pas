@@ -438,14 +438,13 @@ begin
         {Transmit packetized target application}
         i := 0;
         repeat {Transmit target application packets}                                             {Transmit application image}
-          TxBuffLength := 2 + Min((XBee.MaxDataSize div 4)-2, FBinSize - i);                     {  Determine packet length (in longs); header + packet limit or remaining data length}
+          TxBuffLength := 1 + Min((XBee.MaxDataSize div 4)-1, FBinSize - i);                     {  Determine packet length (in longs); header + packet limit or remaining data length}
           SetLength(TxBuf, TxBuffLength*4);                                                      {  Set buffer length (Packet Length) (in longs)}
-          Move(TxBuffLength, TxBuf[0], 4);                                                       {  Store Packet Size (longs)}
-          Move(PacketID, TxBuf[4], 4);                                                           {  Store Packet ID}
-          Move(FBinImage[i*4], TxBuf[2*4], (TxBuffLength-2)*4);                                  {  Store section of data}
+          Move(PacketID, TxBuf[0], 4);                                                           {  Store Packet ID}
+          Move(FBinImage[i*4], TxBuf[4], (TxBuffLength-1)*4);                                    {  Store section of data}
           if TransmitPacket <> PacketID-1 then                                                   {  Transmit packet (retransmit as necessary)}
             raise EHardDownload.Create('Error: communication failed!');                          {    Error if unexpected response}
-          inc(i, TxBuffLength-2);                                                                {  Increment image index}
+          inc(i, TxBuffLength-1);                                                                {  Increment image index}
           dec(PacketID);                                                                         {  Decrement Packet ID (to next packet)}
         {repeat - Transmit target application packets...}
         until PacketID = 0;                                                                      {Loop until done}
@@ -454,10 +453,9 @@ begin
         UpdateProgress(+1, 'Verifying RAM');
 
         {Send verify RAM command}                                                                {Verify RAM Checksum}
-        TxBuffLength := 2;                                                                       {Set length for empty payload}
+        TxBuffLength := 1;                                                                       {Set length for empty payload}
         SetLength(TxBuf, TxBuffLength*4);                                                        {Set buffer length (Packet Length) (in longs)}
-        Move(TxBuffLength, TxBuf[0], 4);                                                         {Store Packet Size (longs)}
-        Move(PacketID, TxBuf[4], 4);                                                             {Store Packet ID}
+        Move(PacketID, TxBuf[0], 4);                                                             {Store Packet ID}
         if TransmitPacket <> -Checksum then                                                      {Transmit packet (retransmit as necessary)}
           raise EHardDownload.Create('Error: RAM Checksum Failure!');                            {  Error if RAM Checksum differs}
         PacketID := -Checksum;                                                                   {Ready next packet; ID's by checksum now }
@@ -466,10 +464,9 @@ begin
         UpdateProgress(+1, 'Launching application (step 1)');
 
         {Send verified/launch command}                                                           {Verified/Launch}
-        TxBuffLength := 2;                                                                       {Set length for empty payload}
+        TxBuffLength := 1;                                                                       {Set length for empty payload}
         SetLength(TxBuf, TxBuffLength*4);                                                        {Set buffer length (Packet Length) (in longs)}
-        Move(TxBuffLength, TxBuf[0], 4);                                                         {Store Packet Size (longs)}
-        Move(PacketID, TxBuf[4], 4);                                                             {Store Packet ID}
+        Move(PacketID, TxBuf[0], 4);                                                             {Store Packet ID}
         if TransmitPacket <> PacketID-1 then                                                     {Transmit packet (retransmit as necessary)}
           raise EHardDownload.Create('Error: communication failed!');                            {  Error if unexpected response}
         dec(PacketID);                                                                           {Ready next packet}
@@ -478,10 +475,9 @@ begin
         UpdateProgress(+1, 'Launching application (step 2)');
 
         {Send launch command}                                                                    {Verified}
-        TxBuffLength := 2;                                                                       {Set length for empty payload}
+        TxBuffLength := 1;                                                                       {Set length for empty payload}
         SetLength(TxBuf, TxBuffLength*4);                                                        {Set buffer length (Packet Length) (in longs)}
-        Move(TxBuffLength, TxBuf[0], 4);                                                         {Store Packet Size (longs)}
-        Move(PacketID, TxBuf[4], 4);                                                             {Store Packet ID}
+        Move(PacketID, TxBuf[0], 4);                                                             {Store Packet ID}
         XBee.SendUDP(TxBuf, True, False);                                                        {Transmit last packet (Launch step 2); no retransmission}
         UpdateProgress(+1, 'Success');
 
@@ -849,40 +845,41 @@ const
   it assists with the remainder of the download (at a faster speed and with more relaxed interstitial timing conducive of Internet Protocol delivery.
   This memory image isn't used as-is; before download, it is first adjusted to contain special values assigned by this host (communication timing and
   synchronization values) and then is translated into an optimized Propeller Download Stream understandable by the Propeller ROM-based boot loader.}
-  RawLoaderAppSize = 110;
-  RawLoaderImage : array[0..439] of byte = ($00,$B4,$C4,$04,$6F,$A1,$10,$00,$B8,$01,$C0,$01,$B0,$01,$C4,$01,
-                                            $A8,$01,$02,$00,$A0,$01,$00,$00,$60,$E8,$BF,$A0,$60,$EC,$BF,$A0,
-                                            $01,$E8,$FF,$68,$01,$EC,$FF,$68,$61,$CE,$BC,$A1,$01,$CE,$FC,$28,
-                                            $F1,$CF,$BC,$80,$A0,$CC,$CC,$A0,$61,$CE,$BC,$F8,$F2,$BF,$3C,$61,
-                                            $07,$CC,$FC,$E4,$04,$D2,$FC,$A0,$65,$D0,$BC,$A0,$08,$CA,$FC,$20,
-                                            $FF,$D0,$FC,$60,$00,$D1,$FC,$68,$01,$D0,$FC,$2C,$61,$CE,$BC,$A0,
-                                            $F1,$CF,$BC,$80,$01,$D0,$FC,$29,$61,$CE,$BC,$F8,$60,$E8,$BF,$70,
-                                            $13,$D0,$7C,$E8,$0C,$D2,$FC,$E4,$62,$C2,$BC,$A0,$6B,$D4,$FC,$A0,
-                                            $6A,$3C,$BC,$54,$6A,$5A,$BC,$54,$6A,$5C,$BC,$54,$04,$D2,$FC,$A0,
-                                            $00,$D6,$FC,$A0,$64,$CC,$BC,$A0,$63,$CE,$BC,$A1,$00,$D0,$FC,$A0,
-                                            $80,$D0,$FC,$72,$F2,$BF,$3C,$61,$22,$CC,$F8,$E4,$4E,$00,$78,$5C,
-                                            $F1,$CF,$BC,$80,$61,$CE,$BC,$F8,$01,$E8,$FF,$6C,$F2,$BF,$3C,$61,
-                                            $00,$D1,$FC,$70,$01,$D0,$FC,$29,$27,$00,$4C,$5C,$68,$D6,$BC,$68,
-                                            $08,$D6,$FC,$20,$1F,$D2,$FC,$E4,$01,$D4,$FC,$80,$1A,$D6,$FC,$E5,
-                                            $65,$D8,$3C,$C2,$01,$CA,$E8,$C1,$6D,$D4,$C8,$84,$59,$DA,$08,$08,
-                                            $04,$B2,$C8,$80,$5B,$6A,$88,$80,$35,$D4,$C8,$E4,$6D,$6A,$C8,$54,
-                                            $0B,$00,$4C,$5C,$01,$CA,$FC,$82,$4F,$00,$54,$5C,$5C,$B0,$BC,$A0,
-                                            $59,$B0,$BC,$84,$02,$B0,$FC,$2A,$59,$D2,$14,$08,$04,$B2,$D4,$80,
-                                            $40,$B0,$D4,$E4,$0A,$B0,$FC,$04,$04,$B0,$FC,$84,$58,$BA,$3C,$08,
-                                            $04,$B0,$FC,$84,$58,$BA,$3C,$08,$01,$B2,$FC,$84,$59,$D2,$BC,$00,
-                                            $69,$CA,$BC,$80,$48,$B2,$7C,$E8,$65,$CA,$BC,$A4,$0B,$00,$7C,$5C,
-                                            $00,$B4,$7C,$0C,$01,$CA,$FC,$84,$B8,$9C,$FC,$58,$4F,$9C,$FC,$50,
-                                            $C0,$A6,$FC,$58,$0B,$00,$7C,$5C,$06,$B2,$FC,$04,$10,$B2,$7C,$86,
-                                            $00,$9C,$54,$0C,$02,$BC,$7C,$0C,$00,$00,$00,$00,$00,$00,$00,$00,
-                                            $80,$00,$00,$00,$00,$02,$00,$00,$00,$80,$00,$00,$FF,$FF,$F9,$FF,
-                                            $10,$C0,$07,$00,$00,$00,$00,$80,$00,$00,$00,$40,$B6,$02,$00,$00,
-                                            $5B,$01,$00,$00,$08,$02,$00,$00,$00,$2D,$31,$01,$00,$00,$00,$00,
-                                            $35,$C7,$08,$35,$2C,$32,$00,$00);
+  RawLoaderAppSize = 116;
+  RawLoaderImage : array[0..463] of byte = ($00,$B4,$C4,$04,$6F,$06,$10,$00,$D0,$01,$D8,$01,$C8,$01,$DC,$01,
+                                            $C0,$01,$02,$00,$B8,$01,$00,$00,$65,$E8,$BF,$A0,$65,$EC,$BF,$A0,
+                                            $01,$E8,$FF,$68,$01,$EC,$FF,$68,$66,$DA,$BC,$A1,$01,$DA,$FC,$28,
+                                            $F1,$DB,$BC,$80,$A0,$D8,$CC,$A0,$66,$DA,$BC,$F8,$F2,$C9,$3C,$61,
+                                            $07,$D8,$FC,$E4,$04,$DE,$FC,$A0,$6B,$DC,$BC,$A0,$08,$D6,$FC,$20,
+                                            $FF,$DC,$FC,$60,$00,$DD,$FC,$68,$01,$DC,$FC,$2C,$66,$DA,$BC,$A0,
+                                            $F1,$DB,$BC,$80,$01,$DC,$FC,$29,$66,$DA,$BC,$F8,$65,$E8,$BF,$70,
+                                            $13,$DC,$7C,$E8,$0C,$DE,$FC,$E4,$67,$CC,$BC,$A0,$69,$40,$FC,$50,
+                                            $71,$E0,$FC,$A0,$70,$3E,$BC,$54,$70,$5C,$BC,$54,$70,$5E,$BC,$54,
+                                            $04,$DE,$FC,$A0,$00,$E2,$FC,$A0,$69,$D8,$BC,$A0,$68,$DA,$BC,$A1,
+                                            $00,$DC,$FC,$A0,$80,$DC,$FC,$72,$F2,$C9,$3C,$61,$23,$D8,$F8,$E4,
+                                            $34,$00,$78,$5C,$F1,$DB,$BC,$80,$66,$DA,$BC,$F8,$01,$E8,$FF,$6C,
+                                            $F2,$C9,$3C,$61,$00,$DD,$FC,$70,$01,$DC,$FC,$29,$28,$00,$4C,$5C,
+                                            $6E,$E2,$BC,$68,$08,$E2,$FC,$20,$6A,$40,$FC,$50,$20,$DE,$FC,$E4,
+                                            $01,$E0,$FC,$80,$1B,$00,$7C,$5C,$20,$D8,$BC,$A0,$FF,$D9,$FC,$60,
+                                            $69,$D8,$7C,$87,$00,$BE,$68,$0C,$6B,$E2,$3C,$C2,$01,$D6,$E8,$C1,
+                                            $72,$E0,$C8,$84,$5E,$E4,$08,$08,$04,$BC,$C8,$80,$60,$76,$88,$80,
+                                            $3B,$E0,$C8,$E4,$72,$76,$C8,$54,$0B,$00,$4C,$5C,$01,$D6,$FC,$82,
+                                            $54,$00,$54,$5C,$61,$BA,$BC,$A0,$5E,$BA,$BC,$84,$02,$BA,$FC,$2A,
+                                            $5E,$DE,$14,$08,$04,$BC,$D4,$80,$46,$BA,$D4,$E4,$0A,$BA,$FC,$04,
+                                            $04,$BA,$FC,$84,$5D,$C4,$3C,$08,$04,$BA,$FC,$84,$5D,$C4,$3C,$08,
+                                            $01,$BC,$FC,$84,$5E,$DE,$BC,$00,$6F,$D6,$BC,$80,$4E,$BC,$7C,$E8,
+                                            $6B,$D6,$BC,$A4,$0B,$00,$7C,$5C,$01,$D6,$FC,$84,$B8,$6E,$FC,$58,
+                                            $54,$6E,$FC,$50,$C0,$B0,$FC,$58,$0B,$00,$7C,$5C,$06,$BC,$FC,$04,
+                                            $10,$BC,$7C,$86,$00,$BE,$54,$0C,$02,$C6,$7C,$0C,$00,$00,$00,$00,
+                                            $00,$00,$00,$00,$80,$00,$00,$00,$00,$02,$00,$00,$00,$80,$00,$00,
+                                            $FF,$FF,$F9,$FF,$10,$C0,$07,$00,$00,$00,$00,$80,$00,$00,$00,$40,
+                                            $B6,$02,$00,$00,$5B,$01,$00,$00,$08,$02,$00,$00,$55,$73,$CB,$00,
+                                            $50,$45,$01,$00,$00,$00,$00,$00,$35,$C7,$08,$35,$2C,$32,$00,$00);
 
-  RawLoaderInitOffset = -(7*4);          {Offset (in bytes) from end of Loader Image pointing to where host-initialized values exist.
-                                          Host-Initialized values are: Initial Bit Time, Final Bit Time, 1.5x Bit Time, Timeout, and
-                                          ExpectedID (as well as image checksum).  They need to be updated before the download stream
-                                          is generated.}
+  RawLoaderInitOffset = -8*4;             {Offset (in bytes) from end of Loader Image pointing to where most host-initialized values exist.
+                                          Host-Initialized values are: Initial Bit Time, Final Bit Time, 1.5x Bit Time, Failsafe timeout,
+                                          End of Packet timeout, and ExpectedID.  In addition, the image checksum at word 5 needs to be
+                                          updated.  All these values need to be updated before the download stream is generated.}
 
   InitCallFrame : array [0..7] of byte = ($FF, $FF, $F9, $FF, $FF, $FF, $F9, $FF);
 
@@ -913,45 +910,46 @@ const
 
 begin
   {Reserve memory for Raw Loader Image}
-  getmem(LoaderImage, RawLoaderAppSize*4+1);                                                                  {Reserve LoaderImage space for RawLoaderImage data plus 1 extra byte to accommodate generation routine}
-  getmem(LoaderStream, ImageLimit div 4 * 11);                                                                {Reserve LoaderStream space for maximum-sized download stream}
+  getmem(LoaderImage, RawLoaderAppSize*4+1);                                                                      {Reserve LoaderImage space for RawLoaderImage data plus 1 extra byte to accommodate generation routine}
+  getmem(LoaderStream, ImageLimit div 4 * 11);                                                                    {Reserve LoaderStream space for maximum-sized download stream}
   try {Reserved memory}
     {Prepare Loader Image}
-    Move(RawLoaderImage, LoaderImage[0], RawLoaderAppSize*4);                                                 {Copy raw loader image to LoaderImage (for adjustments and processing)}
+    Move(RawLoaderImage, LoaderImage[0], RawLoaderAppSize*4);                                                     {Copy raw loader image to LoaderImage (for adjustments and processing)}
     {Clear checksum and set host-initialized values}
     LoaderImage[5] := 0;
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset, 80000000 div InitialBaud);                {Initial Bit Time}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 4, 80000000 div FinalBaud);              {Final Bit Time}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 8, trunc(1.5 * 80000000) div FinalBaud); {1.5x Final Bit Time}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 12, 80000000 * 4 div (2*8));             {Timeout (seconds-worth of Loader's Receive loop iterations)}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 16, PacketCount);                        {First Expected Packet ID; total packet count}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset, 80000000 div InitialBaud);                    {Initial Bit Time}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 4, 80000000 div FinalBaud);                  {Final Bit Time}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 8, trunc(1.5 * 80000000) div FinalBaud);     {1.5x Final Bit Time}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 12, 2 * 80000000 div (3 * 4));               {Failsafe Timeout (seconds-worth of Loader's Receive loop iterations)}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 16, trunc(2 * 80000000 / 230400 * 10 / 12)); {EndOfPacket Timeout (2 bytes worth of Loader's Receive loop iterations)}
+    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 20, PacketCount);                            {First Expected Packet ID; total packet count}
     {Recalculate and update checksum}
     Checksum := 0;
     for Idx := 0 to RawLoaderAppSize*4-1 do inc(Checksum, LoaderImage[Idx]);
     for Idx := 0 to high(InitCallFrame) do inc(Checksum, InitCallFrame[Idx]);
-    LoaderImage[5] := 256-(CheckSum and $FF);                                                                 {Update loader image so low byte of checksum calculates to 0}
+    LoaderImage[5] := 256-(CheckSum and $FF);                                                                     {Update loader image so low byte of checksum calculates to 0}
     {Generate Propeller Loader Download Stream from adjusted LoaderImage (above); Output delivered to LoaderStream and LoaderStreamSize}
     BCount := 0;
     LoaderStreamSize := 0;
-    while BCount < (RawLoaderAppSize*4) * 8 do                                                                {For all bits in data stream...}
+    while BCount < (RawLoaderAppSize*4) * 8 do                                                                    {For all bits in data stream...}
       begin
-        BitsIn := Min(5, (RawLoaderAppSize*4) * 8 - BCount);                                                  {  Determine number of bits in current unit to translate; usually 5 bits}
-        BValue := ( (LoaderImage[BCount div 8] shr (BCount mod 8)) +                                          {  Extract next translation unit (contiguous bits, LSB first; usually 5 bits)}
+        BitsIn := Min(5, (RawLoaderAppSize*4) * 8 - BCount);                                                      {  Determine number of bits in current unit to translate; usually 5 bits}
+        BValue := ( (LoaderImage[BCount div 8] shr (BCount mod 8)) +                                              {  Extract next translation unit (contiguous bits, LSB first; usually 5 bits)}
           (LoaderImage[(BCount div 8) + 1] shl (8 - (BCount mod 8))) ) and Pwr2m1[BitsIn];
-        LoaderStream[LoaderStreamSize] := PDSTx[BValue, BitsIn, dtTx];                                        {  Translate unit to encoded byte}
-        inc(LoaderStreamSize);                                                                                {  Increment byte index}
-        inc(BCount, PDSTx[BValue, BitsIn, dtBits]);                                                           {  Increment bit index (usually 3, 4, or 5 bits, but can be 1 or 2 at end of stream)}
+        LoaderStream[LoaderStreamSize] := PDSTx[BValue, BitsIn, dtTx];                                            {  Translate unit to encoded byte}
+        inc(LoaderStreamSize);                                                                                    {  Increment byte index}
+        inc(BCount, PDSTx[BValue, BitsIn, dtBits]);                                                               {  Increment bit index (usually 3, 4, or 5 bits, but can be 1 or 2 at end of stream)}
       end;
     {Prepare loader packet; contains handshake and Loader Stream.}
-    SetLength(TxBuf, Length(TxHandshake)+11+LoaderStreamSize);                                                {Set packet size}
+    SetLength(TxBuf, Length(TxHandshake)+11+LoaderStreamSize);                                                    {Set packet size}
 
     SendDebugMessage('**** INITIAL PACKET SIZE : ' + Length(TxBuf).ToString + ' BYTES ****', True);
 
     if Length(TxBuf) > XBee.MaxDataSize then
       raise EHardDownload.Create('Developer Error: Initial packet is too large (' + Length(TxBuf).ToString + ' bytes)!');
-    Move(TxHandshake, TxBuf[0], Length(TxHandshake));                                                         {Fill packet with handshake stream (timing template, handshake, and download command (RAM+Run))}
+    Move(TxHandshake, TxBuf[0], Length(TxHandshake));                                                             {Fill packet with handshake stream (timing template, handshake, and download command (RAM+Run))}
 
-    TxBuffLength := Length(TxHandshake);                                                                      {followed by Raw Loader Images's App size (in longs)}
+    TxBuffLength := Length(TxHandshake);                                                                          {followed by Raw Loader Images's App size (in longs)}
     RawSize := RawLoaderAppSize;
     for Idx := 0 to 10 do
       begin
@@ -960,7 +958,7 @@ begin
       RawSize := RawSize shr 3;
       end;
 
-    Move(LoaderStream[0], TxBuf[TxBuffLength], LoaderStreamSize);                                             {and the Loader Stream image itself}
+    Move(LoaderStream[0], TxBuf[TxBuffLength], LoaderStreamSize);                                                 {and the Loader Stream image itself}
 
   finally {Reserved memory}
     freemem(LoaderImage);
