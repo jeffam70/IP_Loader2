@@ -85,7 +85,7 @@ const
   ImageLimit     = 32768;              {Max size of Propeller Application image file}
 
   InitialBaud    = 115200;             {Initial XBee-to-Propeller baud rate}
-  FinalBaud      = 230400;             {Final XBee-to-Propeller baud rate}
+  FinalBaud      = 460800;             {Final XBee-to-Propeller baud rate}
 
   {The RxHandshake array consists of 125 bytes encoded to represent the expected 250-bit (125-byte @ 2 bits/byte) response
   of continuing-LFSR stream bits from the Propeller, prompted by the timing templates following the TxHandshake stream.}
@@ -846,7 +846,6 @@ const
   it assists with the remainder of the download (at a faster speed and with more relaxed interstitial timing conducive of Internet Protocol delivery.
   This memory image isn't used as-is; before download, it is first adjusted to contain special values assigned by this host (communication timing and
   synchronization values) and then is translated into an optimized Propeller Download Stream understandable by the Propeller ROM-based boot loader.}
-  RawLoaderAppSize = 117;
   RawLoaderImage : array[0..467] of byte = ($00,$B4,$C4,$04,$6F,$6C,$10,$00,$D4,$01,$DC,$01,$CC,$01,$E0,$01,
                                             $C4,$01,$02,$00,$BC,$01,$00,$00,$66,$E8,$BF,$A0,$66,$EC,$BF,$A0,
                                             $01,$E8,$FF,$68,$01,$EC,$FF,$68,$67,$DE,$BC,$A1,$01,$DE,$FC,$28,
@@ -912,30 +911,31 @@ const
 
 begin
   {Reserve memory for Raw Loader Image}
-  getmem(LoaderImage, RawLoaderAppSize*4+1);                                                                      {Reserve LoaderImage space for RawLoaderImage data plus 1 extra byte to accommodate generation routine}
-  getmem(LoaderStream, ImageLimit div 4 * 11);                                                                    {Reserve LoaderStream space for maximum-sized download stream}
+  RawSize := (high(RawLoaderImage)+1) div 4;
+  getmem(LoaderImage, RawSize*4+1);                                                                               {Reserve LoaderImage space for RawLoaderImage data plus 1 extra byte to accommodate generation routine}
+  getmem(LoaderStream, RawSize div 4 * 11);                                                                       {Reserve LoaderStream space for maximum-sized download stream}
   try {Reserved memory}
     {Prepare Loader Image}
-    Move(RawLoaderImage, LoaderImage[0], RawLoaderAppSize*4);                                                     {Copy raw loader image to LoaderImage (for adjustments and processing)}
+    Move(RawLoaderImage, LoaderImage[0], RawSize*4);                                                              {Copy raw loader image to LoaderImage (for adjustments and processing)}
     {Clear checksum and set host-initialized values}
     LoaderImage[5] := 0;
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset, 80000000 div InitialBaud);                    {Initial Bit Time}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 4, 80000000 div FinalBaud);                  {Final Bit Time}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 8, trunc(1.5 * 80000000) div FinalBaud);     {1.5x Final Bit Time}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 12, 2 * 80000000 div (3 * 4));               {Failsafe Timeout (seconds-worth of Loader's Receive loop iterations)}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 16, trunc(2 * 80000000 / 230400 * 10 / 12)); {EndOfPacket Timeout (2 bytes worth of Loader's Receive loop iterations)}
-    SetHostInitializedValue(RawLoaderAppSize*4+RawLoaderInitOffset + 20, PacketCount);                            {First Expected Packet ID; total packet count}
+    SetHostInitializedValue(RawSize*4+RawLoaderInitOffset, 80000000 div InitialBaud);                             {Initial Bit Time}
+    SetHostInitializedValue(RawSize*4+RawLoaderInitOffset + 4, 80000000 div FinalBaud);                           {Final Bit Time}
+    SetHostInitializedValue(RawSize*4+RawLoaderInitOffset + 8, trunc(1.5 * 80000000) div FinalBaud - 19);         {1.5x Final Bit Time}
+    SetHostInitializedValue(RawSize*4+RawLoaderInitOffset + 12, 2 * 80000000 div (3 * 4));                        {Failsafe Timeout (seconds-worth of Loader's Receive loop iterations)}
+    SetHostInitializedValue(RawSize*4+RawLoaderInitOffset + 16, trunc(2 * 80000000 / FinalBaud * 10 / 12));       {EndOfPacket Timeout (2 bytes worth of Loader's Receive loop iterations)}
+    SetHostInitializedValue(RawSize*4+RawLoaderInitOffset + 20, PacketCount);                                     {First Expected Packet ID; total packet count}
     {Recalculate and update checksum}
     Checksum := 0;
-    for Idx := 0 to RawLoaderAppSize*4-1 do inc(Checksum, LoaderImage[Idx]);
+    for Idx := 0 to RawSize*4-1 do inc(Checksum, LoaderImage[Idx]);
     for Idx := 0 to high(InitCallFrame) do inc(Checksum, InitCallFrame[Idx]);
     LoaderImage[5] := 256-(CheckSum and $FF);                                                                     {Update loader image so low byte of checksum calculates to 0}
     {Generate Propeller Loader Download Stream from adjusted LoaderImage (above); Output delivered to LoaderStream and LoaderStreamSize}
     BCount := 0;
     LoaderStreamSize := 0;
-    while BCount < (RawLoaderAppSize*4) * 8 do                                                                    {For all bits in data stream...}
+    while BCount < (RawSize*4) * 8 do                                                                             {For all bits in data stream...}
       begin
-        BitsIn := Min(5, (RawLoaderAppSize*4) * 8 - BCount);                                                      {  Determine number of bits in current unit to translate; usually 5 bits}
+        BitsIn := Min(5, (RawSize*4) * 8 - BCount);                                                               {  Determine number of bits in current unit to translate; usually 5 bits}
         BValue := ( (LoaderImage[BCount div 8] shr (BCount mod 8)) +                                              {  Extract next translation unit (contiguous bits, LSB first; usually 5 bits)}
           (LoaderImage[(BCount div 8) + 1] shl (8 - (BCount mod 8))) ) and Pwr2m1[BitsIn];
         LoaderStream[LoaderStreamSize] := PDSTx[BValue, BitsIn, dtTx];                                            {  Translate unit to encoded byte}
@@ -952,7 +952,6 @@ begin
     Move(TxHandshake, TxBuf[0], Length(TxHandshake));                                                             {Fill packet with handshake stream (timing template, handshake, and download command (RAM+Run))}
 
     TxBuffLength := Length(TxHandshake);                                                                          {followed by Raw Loader Images's App size (in longs)}
-    RawSize := RawLoaderAppSize;
     for Idx := 0 to 10 do
       begin
       TxBuf[TxBuffLength] := $92 or -Ord(Idx=10) and $60 or RawSize and 1 or RawSize and 2 shl 2 or RawSize and 4 shl 4;

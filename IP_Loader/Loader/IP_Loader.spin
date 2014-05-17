@@ -88,7 +88,7 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             add     BitDelay, cnt                   '4                  '    Set time to...                   
     :RxBit                  waitcnt BitDelay, BitTime               '6+                 '    Wait for center of bit
 {debug}                     xor     outa, #1                                             
-                            test    RxPin, ina              wc      '4![22/74/102+]     '      Sample bit; c=0/1
+                            test    RxPin, ina              wc      '4![22/70/102+]     '      Sample bit; c=0/1
                             muxc    SByte, #%1_0000_0000            '4                  '      Store bit
                             shr     SByte, #1               wc      '4                  '      Adjust result; c=0 (continue), c=1 (done)
               if_nc         jmp     #:RxBit                         '4                  '    Continue? Loop until done

@@ -12,9 +12,7 @@ THINGS TO DO
 
 * Check variation in Reset-to-Image-Stream delays over distance
 
-* Finalize RAM Checksum response sequence
 * If host receives no "Ready" signal, start image transmission anyway as there's a good chance of recovery
-* If host receives no final ACK, handle gracefully
 * Determine why I can't connect from host machine
   * Seems the firewall may have prevented it at first
   * The IPDestination feature is the problem... need to resolve this (right now it's hard-coded)
@@ -26,8 +24,6 @@ THINGS TO DO
   * Loader Image
     * Should support initial and target 9,600/19,200/38,400/57,600/115,200/230,400/460,800/921,600/1,000,000/1,500,000/2,000,000/3,000,000 baud rates
 
-
-      * Loader acknowledges Application Image (positively or negatively); this is a RAM Checksum response
       * Loader acknowledges EEPROM write
 
   * Increase final baud rate to fastest possible
@@ -79,6 +75,8 @@ THINGS DONE
 * Ensure proper delay after handshake and image
 * Make better timeout method
   * Test as a separate app
+* Finalize RAM Checksum response sequence
+* If host receives no final ACK, handle gracefully
 
 
 * First Try:
@@ -92,18 +90,13 @@ THINGS DONE
       * May need to be last values in image for implementation simplicity
     * Host sets target bit period value in loader image (before download) according to default/user-specified crystal speed
       * May need to set clock speed value LONG[0] and clock mode WORD[?]
-
     * Handshake:
       * Uses standard bit encoding (instead of Propeller bit encoding)
       * Once loader starts, it transmits an acknowledgement to the host
       * Host receives acknowledgement and switches to target baud rate
       * Host begins final image transmission
-
-
-
         * Verified that UDP dumps corrupted packets
           * No need for CRC in packet wrapper
-
     * Final Image Transmission:
       * Data is in units of 32-bits (longs)
       * Packetized; image data is encased in a packet wrapper
@@ -118,6 +111,7 @@ THINGS DONE
         * Loader positively acknowledges duplicates, but dumps duplicate data
         * Loader "may" negatively acknowlege packet and request previous packet (if UDP does't dump corrupted packets; ie: a corrupted acknowledge from before)
           * Host retransmits requested packet if necessary
+      * Loader acknowledges Application Image (positively or negatively); this is a RAM Checksum response
 
 
 
