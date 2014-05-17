@@ -291,7 +291,7 @@ const
      repeat {(Re)Transmit packet}                                                           {  Send application image packet, get acknowledgement, retransmit as necessary}
        if Retry < 3 then UpdateProgress(-1);
 
-       UpdateProgress(+1, 'Sending packet: ' + (TotalPackets-PacketID+1).ToString + ' of ' + TotalPackets.ToString);
+       UpdateProgress(+1);
 
        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' Transmitting packet ' + PacketID.ToString, True);
 
@@ -307,8 +307,8 @@ const
        dec(Retry);                                                                          {  Loop and retransmit until timely non-retransmit acknowledgement received, or retry count exhausted}
      {Repeat - (Re)Transmit packet...}
      { TODO : Revisit phase variance timing trap }
-     until ( Acknowledged and (RemainingTxTime = 0) and (Long(@RxBuf[0]) <> Long(@TxBuf[4])) ) or (Retry = 0);
-     if not ( Acknowledged and (RemainingTxTime = 0) and (Long(@RxBuf[0]) <> Long(@TxBuf[4])) ) then
+     until ( Acknowledged and (RemainingTxTime = 0) and (Long(@RxBuf[0]) <> Long(@TxBuf[0])) ) or (Retry = 0);
+     if not ( Acknowledged and (RemainingTxTime = 0) and (Long(@RxBuf[0]) <> Long(@TxBuf[0])) ) then
        raise EHardDownload.Create('Error: connection lost!');                               {  No acknowledgement received? Error}
      Result := Long(@RxBuf[0]);
    end;
@@ -329,7 +329,7 @@ begin
   
       {Determine number of required packets for target application image; value becomes first Packet ID}
       SetRoundMode(rmUp);
-      TotalPackets := Round(FBinSize*4 / (XBee.MaxDataSize-4*2));                                         {Calculate required number of packets for target image; binary image size (in bytes) / (max packet size - packet header)}
+      TotalPackets := Round(FBinSize*4 / (XBee.MaxDataSize-4*1));                                         {Calculate required number of packets for target image; binary image size (in bytes) / (max packet size - packet header)}
       PacketID := TotalPackets;
       {Calculate target application checksum (used for RAM Checksum confirmation)}
       Checksum := 0;
@@ -442,6 +442,7 @@ begin
           SetLength(TxBuf, TxBuffLength*4);                                                      {  Set buffer length (Packet Length) (in longs)}
           Move(PacketID, TxBuf[0], 4);                                                           {  Store Packet ID}
           Move(FBinImage[i*4], TxBuf[4], (TxBuffLength-1)*4);                                    {  Store section of data}
+          UpdateProgress(0, 'Sending packet: ' + (TotalPackets-PacketID+1).ToString + ' of ' + TotalPackets.ToString);
           if TransmitPacket <> PacketID-1 then                                                   {  Transmit packet (retransmit as necessary)}
             raise EHardDownload.Create('Error: communication failed!');                          {    Error if unexpected response}
           inc(i, TxBuffLength-1);                                                                {  Increment image index}
@@ -460,8 +461,8 @@ begin
           raise EHardDownload.Create('Error: RAM Checksum Failure!');                            {  Error if RAM Checksum differs}
         PacketID := -Checksum;                                                                   {Ready next packet; ID's by checksum now }
 
-        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Launching application (step 1)', True);
-        UpdateProgress(+1, 'Launching application (step 1)');
+        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Requesting Application Launch', True);
+        UpdateProgress(+1, 'Requesting Application Launch');
 
         {Send verified/launch command}                                                           {Verified/Launch}
         TxBuffLength := 1;                                                                       {Set length for empty payload}
@@ -471,8 +472,8 @@ begin
           raise EHardDownload.Create('Error: communication failed!');                            {  Error if unexpected response}
         dec(PacketID);                                                                           {Ready next packet}
 
-        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Launching application (step 2)', True);
-        UpdateProgress(+1, 'Launching application (step 2)');
+        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Application Launching', True);
+        UpdateProgress(+1, 'Application Launching');
 
         {Send launch command}                                                                    {Verified}
         TxBuffLength := 1;                                                                       {Set length for empty payload}
@@ -845,36 +846,37 @@ const
   it assists with the remainder of the download (at a faster speed and with more relaxed interstitial timing conducive of Internet Protocol delivery.
   This memory image isn't used as-is; before download, it is first adjusted to contain special values assigned by this host (communication timing and
   synchronization values) and then is translated into an optimized Propeller Download Stream understandable by the Propeller ROM-based boot loader.}
-  RawLoaderAppSize = 116;
-  RawLoaderImage : array[0..463] of byte = ($00,$B4,$C4,$04,$6F,$06,$10,$00,$D0,$01,$D8,$01,$C8,$01,$DC,$01,
-                                            $C0,$01,$02,$00,$B8,$01,$00,$00,$65,$E8,$BF,$A0,$65,$EC,$BF,$A0,
-                                            $01,$E8,$FF,$68,$01,$EC,$FF,$68,$66,$DA,$BC,$A1,$01,$DA,$FC,$28,
-                                            $F1,$DB,$BC,$80,$A0,$D8,$CC,$A0,$66,$DA,$BC,$F8,$F2,$C9,$3C,$61,
-                                            $07,$D8,$FC,$E4,$04,$DE,$FC,$A0,$6B,$DC,$BC,$A0,$08,$D6,$FC,$20,
-                                            $FF,$DC,$FC,$60,$00,$DD,$FC,$68,$01,$DC,$FC,$2C,$66,$DA,$BC,$A0,
-                                            $F1,$DB,$BC,$80,$01,$DC,$FC,$29,$66,$DA,$BC,$F8,$65,$E8,$BF,$70,
-                                            $13,$DC,$7C,$E8,$0C,$DE,$FC,$E4,$67,$CC,$BC,$A0,$69,$40,$FC,$50,
-                                            $71,$E0,$FC,$A0,$70,$3E,$BC,$54,$70,$5C,$BC,$54,$70,$5E,$BC,$54,
-                                            $04,$DE,$FC,$A0,$00,$E2,$FC,$A0,$69,$D8,$BC,$A0,$68,$DA,$BC,$A1,
-                                            $00,$DC,$FC,$A0,$80,$DC,$FC,$72,$F2,$C9,$3C,$61,$23,$D8,$F8,$E4,
-                                            $34,$00,$78,$5C,$F1,$DB,$BC,$80,$66,$DA,$BC,$F8,$01,$E8,$FF,$6C,
-                                            $F2,$C9,$3C,$61,$00,$DD,$FC,$70,$01,$DC,$FC,$29,$28,$00,$4C,$5C,
-                                            $6E,$E2,$BC,$68,$08,$E2,$FC,$20,$6A,$40,$FC,$50,$20,$DE,$FC,$E4,
-                                            $01,$E0,$FC,$80,$1B,$00,$7C,$5C,$20,$D8,$BC,$A0,$FF,$D9,$FC,$60,
-                                            $69,$D8,$7C,$87,$00,$BE,$68,$0C,$6B,$E2,$3C,$C2,$01,$D6,$E8,$C1,
-                                            $72,$E0,$C8,$84,$5E,$E4,$08,$08,$04,$BC,$C8,$80,$60,$76,$88,$80,
-                                            $3B,$E0,$C8,$E4,$72,$76,$C8,$54,$0B,$00,$4C,$5C,$01,$D6,$FC,$82,
-                                            $54,$00,$54,$5C,$61,$BA,$BC,$A0,$5E,$BA,$BC,$84,$02,$BA,$FC,$2A,
-                                            $5E,$DE,$14,$08,$04,$BC,$D4,$80,$46,$BA,$D4,$E4,$0A,$BA,$FC,$04,
-                                            $04,$BA,$FC,$84,$5D,$C4,$3C,$08,$04,$BA,$FC,$84,$5D,$C4,$3C,$08,
-                                            $01,$BC,$FC,$84,$5E,$DE,$BC,$00,$6F,$D6,$BC,$80,$4E,$BC,$7C,$E8,
-                                            $6B,$D6,$BC,$A4,$0B,$00,$7C,$5C,$01,$D6,$FC,$84,$B8,$6E,$FC,$58,
-                                            $54,$6E,$FC,$50,$C0,$B0,$FC,$58,$0B,$00,$7C,$5C,$06,$BC,$FC,$04,
-                                            $10,$BC,$7C,$86,$00,$BE,$54,$0C,$02,$C6,$7C,$0C,$00,$00,$00,$00,
-                                            $00,$00,$00,$00,$80,$00,$00,$00,$00,$02,$00,$00,$00,$80,$00,$00,
-                                            $FF,$FF,$F9,$FF,$10,$C0,$07,$00,$00,$00,$00,$80,$00,$00,$00,$40,
-                                            $B6,$02,$00,$00,$5B,$01,$00,$00,$08,$02,$00,$00,$55,$73,$CB,$00,
-                                            $50,$45,$01,$00,$00,$00,$00,$00,$35,$C7,$08,$35,$2C,$32,$00,$00);
+  RawLoaderAppSize = 117;
+  RawLoaderImage : array[0..467] of byte = ($00,$B4,$C4,$04,$6F,$6C,$10,$00,$D4,$01,$DC,$01,$CC,$01,$E0,$01,
+                                            $C4,$01,$02,$00,$BC,$01,$00,$00,$66,$E8,$BF,$A0,$66,$EC,$BF,$A0,
+                                            $01,$E8,$FF,$68,$01,$EC,$FF,$68,$67,$DE,$BC,$A1,$01,$DE,$FC,$28,
+                                            $F1,$DF,$BC,$80,$A0,$DC,$CC,$A0,$67,$DE,$BC,$F8,$F2,$CB,$3C,$61,
+                                            $07,$DC,$FC,$E4,$04,$E2,$FC,$A0,$6C,$E0,$BC,$A0,$08,$D8,$FC,$20,
+                                            $FF,$E0,$FC,$60,$00,$E1,$FC,$68,$01,$E0,$FC,$2C,$67,$DE,$BC,$A0,
+                                            $F1,$DF,$BC,$80,$01,$E0,$FC,$29,$67,$DE,$BC,$F8,$66,$E8,$BF,$70,
+                                            $13,$E0,$7C,$E8,$0C,$E2,$FC,$E4,$68,$CE,$BC,$A0,$6A,$40,$FC,$50,
+                                            $73,$E4,$FC,$A0,$72,$3E,$BC,$54,$72,$5C,$BC,$54,$72,$5E,$BC,$54,
+                                            $04,$E2,$FC,$A0,$00,$E6,$FC,$A0,$6A,$DC,$BC,$A0,$69,$DE,$BC,$A1,
+                                            $00,$E0,$FC,$A0,$80,$E0,$FC,$72,$F2,$CB,$3C,$61,$23,$DC,$F8,$E4,
+                                            $34,$00,$78,$5C,$F1,$DF,$BC,$80,$67,$DE,$BC,$F8,$01,$E8,$FF,$6C,
+                                            $F2,$CB,$3C,$61,$00,$E1,$FC,$70,$01,$E0,$FC,$29,$28,$00,$4C,$5C,
+                                            $70,$E6,$BC,$68,$08,$E6,$FC,$20,$6B,$40,$FC,$50,$20,$E2,$FC,$E4,
+                                            $01,$E4,$FC,$80,$1B,$00,$7C,$5C,$20,$DC,$BC,$A0,$FF,$DD,$FC,$60,
+                                            $6A,$DC,$7C,$86,$00,$C0,$68,$0C,$00,$DA,$FC,$A1,$6C,$E6,$3C,$C2,
+                                            $01,$D8,$E8,$C1,$74,$E4,$C8,$84,$5F,$E8,$08,$08,$04,$BE,$C8,$80,
+                                            $61,$78,$88,$80,$3C,$E4,$C8,$E4,$74,$78,$C8,$54,$0B,$00,$4C,$5C,
+                                            $01,$D8,$FC,$82,$55,$00,$54,$5C,$62,$BC,$BC,$A0,$5F,$BC,$BC,$84,
+                                            $02,$BC,$FC,$2A,$5F,$DA,$14,$08,$04,$BE,$D4,$80,$47,$BC,$D4,$E4,
+                                            $0A,$BC,$FC,$04,$04,$BC,$FC,$84,$5E,$C6,$3C,$08,$04,$BC,$FC,$84,
+                                            $5E,$C6,$3C,$08,$01,$BE,$FC,$84,$5F,$E2,$BC,$00,$71,$D8,$BC,$80,
+                                            $4F,$BE,$7C,$E8,$6C,$D8,$BC,$A4,$0B,$00,$7C,$5C,$01,$D8,$FC,$84,
+                                            $B8,$6E,$FC,$58,$55,$6E,$FC,$50,$C0,$B2,$FC,$58,$0B,$00,$7C,$5C,
+                                            $06,$BE,$FC,$04,$10,$BE,$7C,$86,$00,$C0,$54,$0C,$02,$C8,$7C,$0C,
+                                            $00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$02,$00,$00,
+                                            $00,$80,$00,$00,$FF,$FF,$F9,$FF,$10,$C0,$07,$00,$00,$00,$00,$80,
+                                            $00,$00,$00,$40,$B6,$02,$00,$00,$5B,$01,$00,$00,$08,$02,$00,$00,
+                                            $55,$73,$CB,$00,$50,$45,$01,$00,$00,$00,$00,$00,$35,$C7,$08,$35,
+                                            $2C,$32,$00,$00);
 
   RawLoaderInitOffset = -8*4;             {Offset (in bytes) from end of Loader Image pointing to where most host-initialized values exist.
                                           Host-Initialized values are: Initial Bit Time, Final Bit Time, 1.5x Bit Time, Failsafe timeout,

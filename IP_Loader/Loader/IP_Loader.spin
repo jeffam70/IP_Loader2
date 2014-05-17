@@ -102,10 +102,11 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             {Timed out; no packet?}
     :TimedOut               mov     TimeDelay, :NextPktByte                             'Check type of timeout (no packet or end of packet)
                             and     TimeDelay, #$1FF                                      
-                            cmp     TimeDelay, #Failsafe    wz,wc                       ' z=no packet, nz=end of packet; c=0 (prep'd for Check Packet ID)
+                            cmp     TimeDelay, #Failsafe    wz                          ' z=no packet, nz=end of packet
   TOVector    if_z          clkset  Reset                                               '  If no packet, restart Propeller
                             
                             {Check packet ID}
+                            mov     Zero, #0                wc                          'Clear Zero (prep'd for clearing RAM); c=0 (prep'd for checking Packet ID)
                             cmps    PacketID, ExpectedID    wz                          'Received expected packet? z=yes
               if_z          cmps    ExpectedID, #1          wc,wr                       '  (z=1) Ready for next packet (dec ExpectedID; c=new ExpectedID < 0)
                                                                                         '  or (z=0) ready for retransmit (ExpectedID untouched; c=0)
@@ -145,10 +146,9 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
                             neg     ExpectedID, ExpectedID                              'Negate checksum
                                                                                          
                             jmp     #Acknowledge                                        'ACK=Proper -Checksum, NAK=Improper Checksum
-                                                                                         
+
   
                             {Send EEPROM Checksum ACK/NAK here}
-
 
 
                             {Validate program base and launch application}
@@ -205,11 +205,11 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
   ExpectedID    long    0                                        '[host init]           'Expected Packet ID
                                                                                          
 {Reserved Variables}                                                                     
+  Zero          res     1                                                               'Zero value (for clearing RAM); cleared by code
   TimeDelay     res     1                                                               'Timout delay
   BitDelay      res     1                                                               'Bit time delay
   SByte         res     1                                                               'Serial Byte; received or to transmit
-  Bytes                                                                                 'Byte counter
-  Zero          res     1                                                               'Zero value (for clearing RAM); 0 when Bytes = 0
+  Bytes         res     1                                                               'Byte counter
   PacketAddr    res     1                                                               'PacketAddr
   Packet                                                                                'Packet buffer
     PacketID    res     1                                                               '  Header:  Packet ID number
@@ -252,6 +252,26 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
 
 '             if_nz         jmp     #Launch {PacketData}                        'Done receiving app and RAM verified? Launch
                                                                                 'Else, normal mode
+
+
+
+'                           mov     Longs, MainRAMAddr
+'                           add     Longs, #8
+'                           mov     MainRAMAddr, #0
+'   Read                    rdbyte  SByte, MainRAMAddr
+
+'                           or      SByte, #%1_0000_0000                                '  Append stop bit; also acts as loop trigger
+'                           shl     SByte, #1                                           '  Prepend start bit
+'                           mov     BitDelay, BitTime                                   '  Prep first bit window / ensure prev. stop bit window
+'                           add     BitDelay, cnt                                        
+'   :TxBit                  shr     SByte, #1               wc      '4                  '  Get next bit
+'                           waitcnt BitDelay, BitTime               '6+                 '    Wait for edge of bit window
+'                           muxc    outa, TxPin                     '4![18+]            '    Output bit
+'                           tjnz    SByte, #:TxBit                  '4/8                '  Loop for next bit
+
+'                           add     MainRAMAddr, #1
+'                           djnz    Longs, #Read
+'                           jmp     #$
 
 
 'Possibly adjust BitTime1_5 by sample loop time to true it up
