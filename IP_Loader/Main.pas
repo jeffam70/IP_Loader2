@@ -360,6 +360,11 @@ begin
             {(Enforce XBee Configuration and...) Generate reset signal, then wait for serial transfer window}
             UpdateProgress(0, 'Generating reset signal');
             GenerateResetSignal;
+
+//      SetLength(TxBuf, 1);
+//      TxBuf[0] := 0;
+//      XBee.SendUDP(TxBuf, False);
+
             IndySleep(190);
 
             SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending handshake and loader image', True);
@@ -711,7 +716,7 @@ begin
     begin
     Validate(xbSerialIP, SerialUDP, False);                                                  {    Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
     { TODO : Figure out how to set xbIPDestination. }
-    Validate(xbIPDestination, $C0A80188);                                                    {    Ensure Serial-to-IP destination is us (our IP)}
+    Validate(xbIPDestination, $FFFFFFFF { $C0A80188 } );                                     {    Ensure Serial-to-IP destination is us (our IP)}
     Validate(xbIO2State, pinOutHigh);                                                        {    Ensure I/O is set to output high}
     Validate(xbOutputMask, $7FFF);                                                           {    Ensure output mask is proper (default, in this case)}
     Validate(xbIO2Timer, 1);                                                                 {    Ensure DIO2's timer is set to 100 ms}

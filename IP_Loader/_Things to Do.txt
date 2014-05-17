@@ -12,6 +12,9 @@ THINGS TO DO
 
 * Check variation in Reset-to-Image-Stream delays over distance
 
+* Review and test (if necessary) connecting to serial service via UDP first, before sending the first API-based Serial stream, to see if the XBee
+  automatically responds to the proper IP and port.  If so, this could eliminate the need to set the Destination IP attribute.
+
 * If host receives no "Ready" signal, start image transmission anyway as there's a good chance of recovery
 * Determine why I can't connect from host machine
   * Seems the firewall may have prevented it at first
@@ -25,9 +28,6 @@ THINGS TO DO
     * Should support initial and target 9,600/19,200/38,400/57,600/115,200/230,400/460,800/921,600/1,000,000/1,500,000/2,000,000/3,000,000 baud rates
 
       * Loader acknowledges EEPROM write
-
-  * Increase final baud rate to fastest possible
-    * Test extensively
     
 
 * Consider
@@ -38,8 +38,6 @@ THINGS TO DO
   * Could use I/O pin to instantiate flow control for a certain amount of time during reset,
     this way we can time serial output's start in relation to reset better.
 
-  * Figure out how to deal with late packet arrival.  Sometimes during Identify, the packets arrive later than the timeout.  Also, during programming, the UDP
-    response is not seen right away.
 
 
 THINGS DONE
@@ -77,6 +75,8 @@ THINGS DONE
   * Test as a separate app
 * Finalize RAM Checksum response sequence
 * If host receives no final ACK, handle gracefully
+* Increase final baud rate to fastest possible
+  * Test extensively
 
 
 * First Try:
@@ -85,6 +85,7 @@ THINGS DONE
 
 * Download Method
   * Switch to compressed calibration pulse + handshake + download command + image size + loader image (single packet)
+    * Should support initial 115,200 and final 460800.
   * Loader Image
     * Full Propeller Application Written in Propeller Assembly
       * May need to be last values in image for implementation simplicity
@@ -118,6 +119,8 @@ THINGS DONE
 * Timing
   * Try making routine to sleep.
     * Use Sleep(time), but check time before and afterwards.  If delta_time is not close to time, Sleep again for time-delta_time.
+  * Figure out how to deal with late packet arrival.  Sometimes during Identify, the packets arrive later than the timeout.  Also, during programming, the UDP
+    response is not seen right away.
 
 * Add TCP
   * To connect
