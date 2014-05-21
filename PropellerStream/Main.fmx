@@ -30,12 +30,12 @@ object PropellerStreamForm: TPropellerStreamForm
     object ButtonLayout: TLayout
       Align = alHorzCenter
       Height = 32.000000000000000000
-      Position.X = 261.000000000000000000
+      Position.X = 264.000000000000000000
       Width = 361.000000000000000000
       object AppNameEdit: TEdit
         Touch.InteractiveGestures = [igLongTap, igDoubleTap]
         TabOrder = 0
-        Text = 'Loader'
+        Text = 'RawLoader'
         Position.X = 72.000000000000000000
         Position.Y = 3.000000000000000000
         Width = 100.000000000000000000
@@ -57,6 +57,17 @@ object PropellerStreamForm: TPropellerStreamForm
         Width = 161.000000000000000000
         OnClick = LoadPropellerAppButtonClick
       end
+    end
+    object MiniLoaderCheckbox: TCheckBox
+      Align = alLeft
+      Height = 32.000000000000000000
+      IsChecked = True
+      Margins.Left = 5.000000000000000000
+      Margins.Right = -175.000000000000000000
+      Position.X = 5.000000000000000000
+      TabOrder = 1
+      Text = 'Process as Mini-Loader'
+      Width = 175.000000000000000000
     end
   end
   object MemoLayout: TLayout
@@ -94,8 +105,8 @@ object PropellerStreamForm: TPropellerStreamForm
       Text = 
         'Click the button to load a Propeller Application and generate De' +
         'lphi-code (raw image array and optimized Propeller Download Prot' +
-        'ocol Stream).  AppName determins the constant names in the gener' +
-        'ated code.'
+        'ocol Stream).  AppName determines the constant names in the gene' +
+        'rated code.'
       Width = 864.000000000000000000
     end
   end

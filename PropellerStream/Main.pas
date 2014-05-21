@@ -7,6 +7,9 @@ uses
   FMX.Types, FMX.Graphics, FMX.Controls, FMX.Forms, FMX.Dialogs, FMX.StdCtrls, FMX.Layouts, FMX.Memo, FMX.Edit;
 
 type
+  PIntArray = ^TIntArray;
+  TIntArray = array[0..8191] of Integer;
+
   TPropellerStreamForm = class(TForm)
     OpenDialog: TOpenDialog;
     LoadPropellerAppButton: TButton;
@@ -19,9 +22,11 @@ type
     AppNameEdit: TEdit;
     AppNameLabel: TLabel;
     ButtonLayout: TLayout;
+    MiniLoaderCheckbox: TCheckBox;
     procedure LoadPropellerAppButtonClick(Sender: TObject);
   private
     { Private declarations }
+    procedure ProcessMiniLoader;
     procedure GenerateStream(InImage: PByteArray; InSize: Integer; OutImage: PByteArray; var OutSize: Integer);
     procedure GenerateDelphiCode(Image: PByteArray; AppSizeLongs, ImageSizeBytes: Integer; Header: String);
   public
@@ -30,10 +35,16 @@ type
 
   EFileCorrupt = class(Exception); {File Corrupt exception}
 
+  procedure FreeFPktImage;
+
 var
   PropellerStreamForm: TPropellerStreamForm;
   FBinImage  : PByteArray;               {Loaded Propeller Application's binary image}
   FBinSize   : Integer;                  {The size of FBinImage (in longs)}
+  FLdrImage  : PByteArray;               {Mini-Loader's image}
+  FLdrSize   : Integer;                  {The size of the mini-loader (in longs)}
+  FPktImage  : array of PByteArray;      {Mini-Loader's executable packets}
+  FPktSize   : array of Integer;         {The sizes of mini-loader's executable packets}
   FStrmImage : PByteArray;               {The generated download stream)}
   FStrmSize  : Integer;                  {The size of FStrmImage (in longs)}
 
@@ -186,6 +197,10 @@ begin
     FBinSize := ImageSize div 4;
     {Download image to Propeller chip (use VBase (word 4) value as the 'image long-count size')}
 //    Propeller.Download(Buffer, PWordArray(Buffer)[4] div 4, DownloadCmd);
+    if MiniLoaderCheckbox.IsChecked then
+      begin
+      ProcessMiniLoader;
+      end;
     GenerateStream(FBinImage, FBinSize, FStrmImage, FStrmSize);
     GenerateDelphiCode(FBinImage, FBinSize, FBinSize*4, '//Raw Application Image');
     GenerateDelphiCode(FStrmImage, FBinSize, FStrmSize, '//Optimized Download Stream Image');
@@ -206,6 +221,50 @@ begin
       exit;
       end;
   end;
+end;
+
+{--------------------------------------------------------------------------------}
+
+procedure TPropellerStreamForm.ProcessMiniLoader;
+{Process the Propeller Application as a Mini-Loader application that contains a core and executable packets.}
+var
+  SIdx, EIdx : Integer;
+  RCount     : Integer;  {Removed long count}
+
+   {----------------}
+
+//   function Long(Addr: TIdBytes): Cardinal;
+   {Returns four bytes starting at Addr as a single cardinal value (Long)}
+//   begin
+//     Result := (Addr[3] shl 24) + (Addr[2] shl 16) or (Addr[1] shl 8) or Addr[0];
+//   end;
+
+   {----------------}
+
+begin
+  FreeFPktImage;
+  setlength(FPktSize, 0);
+  EIdx := PWordArray(FBinImage)[6] div 4;
+  SIdx := EIdx-1;
+  RCount := EIdx;
+  repeat
+    while (SIdx > 0) and (PIntArray(FBinImage)[SIdx] <> $11111111) do dec(SIdx);
+    if SIdx > 0 then
+      begin
+      setlength(FPktImage, high(FPktImage)+2);
+      setlength(FPktSize, high(FPktSize)+2);
+      getmem(FPktImage[high(FPktImage)], ImageLimit);
+      FPktSize[high(FPktSize)] := EIdx-SIdx-1;
+      move(FBinImage[SIdx*4+4], FPktImage[high(FPktImage)][0], FPktSize[high(FPktSize)]*4);
+      end;
+    if SIdx > 0 then EIdx := SIdx;
+    dec(SIdx);
+  until SIdx < 0;
+  dec(RCount, EIdx);
+  move(FBinImage[0], FLdrImage[0], EIdx*4);
+  FLdrSize := EIdx;
+  move(FBinImage[PWordArray(FBinImage)[6]], FLdrImage[FLdrSize*4], PWordArray(FBinImage)[7]-PWordArray(FBinImage)[6]);
+  {Adjust words 4? through 7 and Checksum}
 end;
 
 {--------------------------------------------------------------------------------}
@@ -321,14 +380,29 @@ end;
 
 {--------------------------------------------------------------------------------}
 
+procedure FreeFPktImage;
+begin
+  while high(FPktImage) > -1 do
+    begin
+    freemem(FPktImage[high(FPktImage)]);
+    setlength(FPktImage, high(FPktImage));
+    end;
+end;
+
+{--------------------------------------------------------------------------------}
+
 initialization
   getmem(FBinImage, ImageLimit);
+  getmem(FLdrImage, ImageLimit);
   getmem(FStrmImage, ImageLimit*11);
 
 {--------------------------------------------------------------------------------}
 
 finalization
   freemem(FBinImage);
+  freemem(FLdrImage);
+  FreeFPktImage;
+  setlength(FPktSize, 0);
   freemem(FStrmImage);
 
 end.
