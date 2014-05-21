@@ -60,6 +60,7 @@ implementation
 
 procedure TPropellerStreamForm.LoadPropellerAppButtonClick(Sender: TObject);
 var
+  Idx         : Integer;
   FStream     : TFileStream;
   ImageSize   : Integer;
   FName       : String;
@@ -200,10 +201,18 @@ begin
     if MiniLoaderCheckbox.IsChecked then
       begin
       ProcessMiniLoader;
+//      GenerateStream(FLdrImage, FLdrSize, FStrmImage, FStrmSize);
+      GenerateDelphiCode(FLdrImage, FLdrSize, FLdrSize*4, '//Raw Application Image');
+//      GenerateDelphiCode(FStrmImage, FLdrSize, FStrmSize, '//Optimized Download Stream Image');
+      for Idx := high(FPktImage) downto 0 do
+        GenerateDelphiCode(FPktImage[Idx], FPktSize[Idx], FPktSize[Idx]*4, '//Raw Executable Packet Code ' + (high(FPktImage)-Idx+1).ToString);
+      end
+    else
+      begin
+      GenerateStream(FBinImage, FBinSize, FStrmImage, FStrmSize);
+      GenerateDelphiCode(FBinImage, FBinSize, FBinSize*4, '//Raw Application Image');
+      GenerateDelphiCode(FStrmImage, FBinSize, FStrmSize, '//Optimized Download Stream Image');
       end;
-    GenerateStream(FBinImage, FBinSize, FStrmImage, FStrmSize);
-    GenerateDelphiCode(FBinImage, FBinSize, FBinSize*4, '//Raw Application Image');
-    GenerateDelphiCode(FStrmImage, FBinSize, FStrmSize, '//Optimized Download Stream Image');
   except
     on E: EFileCorrupt do
       begin {Image corrupt, show error and exit}
@@ -230,41 +239,51 @@ procedure TPropellerStreamForm.ProcessMiniLoader;
 var
   SIdx, EIdx : Integer;
   RCount     : Integer;  {Removed long count}
-
-   {----------------}
-
-//   function Long(Addr: TIdBytes): Cardinal;
-   {Returns four bytes starting at Addr as a single cardinal value (Long)}
-//   begin
-//     Result := (Addr[3] shl 24) + (Addr[2] shl 16) or (Addr[1] shl 8) or Addr[0];
-//   end;
-
-   {----------------}
+  Checksum   : Byte;
 
 begin
+  {Reset packet image array}
   FreeFPktImage;
   setlength(FPktSize, 0);
+  {Set end and start indexes to the start of Spin code (after data; PASM)}
   EIdx := PWordArray(FBinImage)[6] div 4;
   SIdx := EIdx-1;
+  {Prime removed long count to end index}
   RCount := EIdx;
+  {Find and extract executable packet code}
   repeat
+    {Find previous packet code marker, if any}
     while (SIdx > 0) and (PIntArray(FBinImage)[SIdx] <> $11111111) do dec(SIdx);
     if SIdx > 0 then
-      begin
+      begin {Found a packet code marker}
+      {Make room in Packet Image array}
       setlength(FPktImage, high(FPktImage)+2);
       setlength(FPktSize, high(FPktSize)+2);
       getmem(FPktImage[high(FPktImage)], ImageLimit);
+      {Calculate size of packet code}
       FPktSize[high(FPktSize)] := EIdx-SIdx-1;
+      {Copy packet code into array}
       move(FBinImage[SIdx*4+4], FPktImage[high(FPktImage)][0], FPktSize[high(FPktSize)]*4);
       end;
+    {Ready to find previous packet code, if any}
     if SIdx > 0 then EIdx := SIdx;
     dec(SIdx);
   until SIdx < 0;
+  {Calculate total longs to remove from application image}
   dec(RCount, EIdx);
+  {Copy core data (PASM) and Spin code to loader image array, leaving out executable packet code}
   move(FBinImage[0], FLdrImage[0], EIdx*4);
   FLdrSize := EIdx;
   move(FBinImage[PWordArray(FBinImage)[6]], FLdrImage[FLdrSize*4], PWordArray(FBinImage)[7]-PWordArray(FBinImage)[6]);
-  {Adjust words 4? through 7 and Checksum}
+  inc(FLdrSize, (PWordArray(FBinImage)[4]-PWordArray(FBinImage)[6]) div 4);
+  {Adjust pointers (start of variables, start of stack space, first public method pointer, current stack pointer, and Spin method pointers}
+  for SIdx := 4 to 7 do PWordArray(FLdrImage)[SIdx] := PWordArray(FLdrImage)[SIdx] - RCount*4;
+  for SIdx := 0 to PWordArray(FLdrImage)[9]-1 do PWordArray(FLdrImage)[8+SIdx*2] := PWordArray(FLdrImage)[8+SIdx*2] - RCount*4;
+  {Recalculate and adjust checksum}
+  FLdrImage[5] := 0;
+  Checksum := 0;
+  for SIdx := 0 to ImageLimit-1 do CheckSum := CheckSum + FLdrImage[SIdx];
+  FLdrImage[5] := $100-Checksum;
 end;
 
 {--------------------------------------------------------------------------------}
