@@ -1,8 +1,13 @@
 {IP_Loader.spin
 
- This is the mini-loader delivered by the first Internet Protocol packet sent to the Propeller over XBee WiFi.  It assists with the remainder
- of the download to deliver the desired Propeller Application in a quick and reliable fashion.
+ This is the mini-loader delivered via IP (Internet Protocol) packets sent to the Propeller over XBee Wi-Fi S6B.
+ It is written to compile as a single unit, but for space and delivery reasons is not meant to run as, or be delivered as,
+ a single unit.  IE: It can not be downloaded and executed as-is, below, in the standard fashion.
 
+ The core of this application ("Mini-Loader Core" through "Constants and Variables") is delivered by the very first IP packet.
+ It then runs and assists with the remainder of the download to deliver the target Propeller Application in a quick and reliable fashion.
+ The remaining parts of this mini-loader application ("Finalization") are delivered when needed as "executable" packets.
+ 
  Any symbols in the assembly's "Constants" section labeled "[host init]" has their values set by the host before this application image is
  transmission via the first packet.
 
@@ -18,6 +23,7 @@ CON
 
   JMP_Inst       = %010111_000                                                  'JMP instruction's I+E field  value
   TEST_Inst      = %011000_000                                                  'TEST instruction's I+E field value
+  PacketCode     = $11111111                                                    'Executable packet code marker
   
 PUB Main             
 
@@ -35,6 +41,10 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
         'n![m/l] : like above except inner-loop iteration time is m cycles moment-to-moment, outer-loop is l cycles moment-to-moment
         }
 
+'***************************************
+'*           Mini-Loader Core          *
+'***************************************
+        
                             org     0                    
                             {Initialize Tx pin}                                 
   Loader                    mov     outa, TxPin                                         'Tx Pin to output high (resting state)
@@ -118,64 +128,8 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
               if_z_and_nc   djnz    PacketAddr, #:Copy                                  'Loop for whole packet
               if_z_and_nc   movd    :Copy, #PacketData                                  'Reset PacketData{addr} for next time
                                                                                          
-              if_nc         jmp     #Acknowledge                                        'Loop to acknowledge if ExpectedID >= 0
-                                                                                        'ExpectedID < 0
-                            add     ExpectedID, #1          wz                          'Verified RAM already? z=no
-              if_nz         jmp     #Launch {PacketData}                                '  Yes? Run packet code just delivered
-                                                                                         
-                            {Entire Application Received; clear remaining RAM}           
-                            mov     Longs, EndOfRAM                                     'Determine number of registers to clear
-                            sub     Longs, MainRAMAddr                                   
-                            shr     Longs, #2               wz                           
-    :Clear    if_nz         wrlong  Zero, MainRAMAddr                                   'Clear register
-              if_nz         add     MainRAMAddr, #4                                     '  Increment Main RAM address
-              if_nz         djnz    Longs, #:Clear                                      'Loop until end; Main RAM Addr = $8000
-                                                                                         
-                            {Insert initial call frame}                                  
-                            rdword  Longs, #5<<1                                        'Get next stack address
-                            sub     Longs, #4                                           'Adjust to previous stack address
-                            wrlong  CallFrame, Longs                                    'Store initial call frame
-                            sub     Longs, #4                                            
-                            wrlong  CallFrame, Longs                                     
-                                                                                         
-                            {Verify RAM; calculate checksum}                            '(ExpectedID = 0, MainRAMAddr = $8000)
-    :Validate               sub     MainRAMAddr, #1                                     'Decrement Main RAM Address
-                            rdbyte  Bytes, MainRAMAddr                                  '  Read next byte from Main RAM
-                            add     ExpectedID, Bytes                                   '  Adjust checksum
-                            tjnz    MainRAMAddr, #:Validate                             'Loop for all RAM
-                            neg     ExpectedID, ExpectedID                              'Negate checksum
-                                                                                         
-                            jmp     #Acknowledge                                        'ACK=Proper -Checksum, NAK=Improper Checksum
-
-  
-                            {Send EEPROM Checksum ACK/NAK here}
-
-
-                            {Validate program base and launch application}
-                            {The following code "may" be executed twice (if final Launch packet not received)
-                             The first pass sets the Timeout feature to call this code (in the case noted above)
-                             and modifies to continue through acknowledgment, the second pass (if it happens) will
-                             effectively launch the target application without further communication witht the host.}
-  Launch                    sub     ExpectedID, #1                                      'Set ExpectedID to next value
-                            movi    TOVector, #JMP_Inst                                 'Timeout can safely launch now; replace time out vector's 
-                            movs    TOVector, #Launch                                   '  restart instruction with "jmp #Launch"
-                            movi    $+1, #TEST_Inst                                     '"NOP" next inst; we'll run through next time
-                            jmp     #Acknowledge                                        'Jump (pass 1) to send acknowledgement; else continue (pass 2)
-                                                                                         
-                            rdword  MainRAMAddr, #3<<1                                  'Check program base address
-                            cmp     MainRAMAddr, #$10       wz                          'nz=Invalid
-              if_nz         clkset  Reset                                               'Invalid?  Reset Propeller
-                                                                                         
-'                           rdbyte  Bytes, #4                                           'if xtal/pll enabled, start up now
-'                           and     Bytes, #$F8                                         '..while remaining in rcfast mode
-'                           clkset  Bytes                                                
-                                                                                         
-'   :delay                  djnz    time_xtal,#:delay                                   'allow 20ms @20MHz for xtal/pll to settle
-                                                                                         
-'                           rdbyte  Bytes,#4                                            'switch to selected clock
-'                           clkset  Bytes                                                
-                                                                                         
-                            coginit interpreter                                         'Relaunch with Spin Interpreter
+              if_nc         jmp     #Acknowledge                                        'ExpectedID > -1?  Loop to acknowledge (positively or negatively)
+                            jmp     #PacketData                                         'Else, ExpectedID < 0  Run the packet code just delivered
                        
 '***************************************
 '*       Constants and Variables       *
@@ -215,7 +169,104 @@ Timing: Critical routine timing is shown in comments, like '4 and '6+, indicatio
     PacketID    res     1                                                               '  Header:  Packet ID number
     PacketData  res     (MaxPayload / 4) - 1                                            '  Payload: Packet data (longs); (max size in longs) - header
                                                                                          
+'***************************************
+'*             Finalization            *
+'***************************************
+
+{The following are routines delivered inside packets, as needed.  They are "executable" packets delivered and run from packets with ID's
+of 0 and lower.} 
+
+'---- Finalize and Verify RAM (Executable Packet Code) ----
+                            org     PacketData-1                                        'Line up executable packet code
+                            long    PacketCode                                          'Mark as executable packet
+                            {Entire Application Received; clear remaining RAM}           
+                            mov     Longs, EndOfRAM                                     'Determine number of registers to clear
+                            sub     Longs, MainRAMAddr                                   
+                            shr     Longs, #2               wz                           
+    :Clear    if_nz         wrlong  Zero, MainRAMAddr                                   'Clear register
+              if_nz         add     MainRAMAddr, #4                                     '  Increment Main RAM address
+              if_nz         djnz    Longs, #:Clear                                      'Loop until end; Main RAM Addr = $8000
                                                                                          
+                            {Insert initial call frame}                                  
+                            rdword  Longs, #5<<1                                        'Get next stack address
+                            sub     Longs, #4                                           'Adjust to previous stack address
+                            wrlong  CallFrame, Longs                                    'Store initial call frame
+                            sub     Longs, #4                                            
+                            wrlong  CallFrame, Longs                                     
+                                                                                         
+                            {Verify RAM; calculate checksum}                            '(ExpectedID = 0, MainRAMAddr = $8000)
+    :Validate               sub     MainRAMAddr, #1                                     'Decrement Main RAM Address
+                            rdbyte  Bytes, MainRAMAddr                                  '  Read next byte from Main RAM
+                            add     ExpectedID, Bytes                                   '  Adjust checksum
+                            tjnz    MainRAMAddr, #:Validate                             'Loop for all RAM
+                            neg     ExpectedID, ExpectedID                              'Negate checksum
+                                                                                         
+                            jmp     #Acknowledge                                        'ACK=Proper -Checksum, NAK=Improper Checksum
+
+
+'---- Prep for Validation and Launch (Executable Packet Code) ----
+
+{The following code "may" be executed twice- if the final launch packet is not received.  The first Launch packet
+delivers this code which, when executed, modifies the Timeout feature to call this code again (in the case noted above)
+and modifies itself to skip acknowledgment next time, then it sends acknowledgement of the first Launch packet to the host.
+The second pass only happens if the final launch packet is not received- it will effectively launch the target application
+without further communication with the host.  However, if the final launch packet is received, it replaces this code with
+a simpler version meant to execute just once, without further communication with the host.}
+
+                            org     PacketData-1                                        'Line up executable packet code
+                            long    PacketCode                                          'Mark as executable packet
+                
+  LaunchStart               movi    TOVector, #JMP_Inst                                 'We can safely launch upon timeout now; replace timeout vector's 
+                            movs    TOVector, #PacketData+3                             '  restart instruction with jump past acknowledgement, below
+                            jmp     #Acknowledge                                        'Jump (pass 1) to send acknowledgement
+                                                                                         
+                            rdword  MainRAMAddr, #3<<1                                  'Else (pass 2), check program base address
+                            cmp     MainRAMAddr, #$10       wz                          'nz=Invalid
+              if_nz         clkset  Reset                                               'Invalid?  Reset Propeller
+                                                                                         
+'                           rdbyte  Bytes, #4                                           'if xtal/pll enabled, start up now
+'                           and     Bytes, #$F8                                         '..while remaining in rcfast mode
+'                           clkset  Bytes                                                
+                                                                                         
+'   :delay                  djnz    time_xtal,#:delay                                   'allow 20ms @20MHz for xtal/pll to settle
+                                                                                         
+'                           rdbyte  Bytes,#4                                            'switch to selected clock
+'                           clkset  Bytes                                                
+                                                                                         
+                            coginit interpreter                                         'Relaunch with Spin Interpreter
+
+
+'---- Validate and Launch (Executable Packet Code) ----
+
+{The following code "may" never be received- if the final launch packet (above) is not received. If this code isn't received,
+the first launch packet will launch the target application without further communication with the host.}
+
+                            org     PacketData-1                                        'Line up executable packet code
+                            long    PacketCode                                          'Mark as executable packet
+                
+  LaunchFinal               rdword  MainRAMAddr, #3<<1                                  'Check program base address
+                            cmp     MainRAMAddr, #$10       wz                          'nz=Invalid
+              if_nz         clkset  Reset                                               'Invalid?  Reset Propeller
+                                                                                         
+'                           rdbyte  Bytes, #4                                           'if xtal/pll enabled, start up now
+'                           and     Bytes, #$F8                                         '..while remaining in rcfast mode
+'                           clkset  Bytes                                                
+                                                                                         
+'   :delay                  djnz    time_xtal,#:delay                                   'allow 20ms @20MHz for xtal/pll to settle
+                                                                                         
+'                           rdbyte  Bytes,#4                                            'switch to selected clock
+'                           clkset  Bytes                                                
+                                                                                         
+                            coginit interpreter                                         'Relaunch with Spin Interpreter
+
+
+
+
+
+
+
+
+                                                                
 ' CalcBitTime           mov     BitTime1_5, BitTime                                     'Calculate 1.5x bit time (BitTime * 3 / 2)
 '                       shl     BitTime1_5, #1
 '                       add     BitTime1_5, BitTime
