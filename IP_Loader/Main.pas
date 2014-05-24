@@ -74,6 +74,7 @@ type
 var
   Form1             : TForm1;
   Time              : TTime;
+  HostIPAddr        : Cardinal;         {Our IP Address (can be different if multiple network adapters)}
   XBee              : TXBeeWiFi;
   XBeeList          : array of TXBee;   {Dynamic array of XBee Info records}
   TxBuf             : TIdBytes;         {Transmit packet (resized per packet)}
@@ -693,6 +694,7 @@ end;
 
 procedure TForm1.PCPortComboChange(Sender: TObject);
 begin
+  HostIPAddr := IPv4ToDWord(XBeeList[PCPortCombo.Selected.Index].HostIPAddr);
   IPAddr.Text := XBeeList[PCPortCombo.Selected.Index].IPAddr;
   XBee.RemoteIPAddr := IPAddr.Text;
   IPPort.Text := inttostr(XBeeList[PCPortCombo.Selected.Index].IPPort);
@@ -752,7 +754,7 @@ begin
     begin
     Validate(xbSerialIP, SerialUDP, False);                                                  {    Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
     { TODO : Figure out how to set xbIPDestination. }
-    Validate(xbIPDestination, $FFFFFFFF { $C0A80188 } );                                     {    Ensure Serial-to-IP destination is us (our IP)}
+    Validate(xbIPDestination, HostIPAddr);                                                   {    Ensure Serial-to-IP destination is us (our IP)}
     Validate(xbOutputMask, $7FFF);                                                           {    Ensure output mask is proper (default, in this case)}
     Validate(xbRTSFLow, pinEnabled);                                                         {    Ensure RTS flow pin is enabled (input)}
     Validate(xbIO4Mode, pinOutLow);                                                          {    Ensure serial hold pin is set to output low}
