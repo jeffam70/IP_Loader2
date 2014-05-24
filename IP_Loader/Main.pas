@@ -18,6 +18,7 @@ type
   PXBee = ^ TXBee;
   TXBee = record
     PCPort      : String;                     {Pseudo-Communication Port (derived from MacAddr}
+    HostIPAddr  : String;                     {Host's IP Address on the network adapter connecting to this XBee Wi-Fi's network}
     IPAddr      : String;                     {IP Address}
     IPPort      : Cardinal;                   {IP Port}
     MacAddrHigh : Cardinal;                   {Upper 16 bits of MAC address}
@@ -160,45 +161,80 @@ end;
 
 procedure TForm1.IdentifyButtonClick(Sender: TObject);
 var
-  Idx   : Cardinal;
-  XBIdx : Integer;
-  Nums  : TSimpleNumberList;
-  PXB   : PXBee;
+  Idx        : Cardinal;
+  IPIdx      : Cardinal;
+  XBIdx      : Integer;
+  Nums       : TSimpleNumberList;
+  PXB        : PXBee;
 begin
-  PCPortCombo.Clear;
-  SetLength(XBeeList, 0);
-  MacAddr.Text := '';
-  IPAddr.Text := '';
-  IPPort.Text := '';
-  NodeID.Text := '';
-{ TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
-  XBee.RemoteIPAddr := ifthen(BroadcastAddress.Text <> '', BroadcastAddress.Text, '192.168.1.255');
-  if XBee.GetItem(xbIPAddr, Nums) then
-    begin
-    for Idx := 0 to High(Nums) do
-      begin
-      SetLength(XBeeList, Length(XBeeList)+1);
-      PXB := @XBeeList[High(XBeeList)];
-      PXB.CfgChecksum := CSumUnknown;
-      PXB.IPAddr := FormatIPAddr(Nums[Idx]);
-      XBee.RemoteIPAddr := PXB.IPAddr;
-      if XBee.GetItem(xbIPPort, PXB.IPPort) then
-        if XBee.GetItem(xbMacHigh, PXB.MacAddrHigh) then
-          if XBee.GetItem(xbMacLow, PXB.MacAddrLow) then
-            if XBee.GetItem(xbNodeID, PXB.NodeID) then
-              begin
-              PXB.PCPort := 'XB' + rightstr(inttostr(PXB.MacAddrLow), 2);
-              XBIdx := PCPortCombo.Items.IndexOf(PXB.PCPort);
-              if (XBIdx = -1) or (PXBee(PCPortCombo.Items.Objects[XBIdx]).IPAddr <> PXB.IPAddr) then      {Add only unique XBee modules found; ignore duplicates}
-                PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB));
-              end;
-      end;
+  Form1.Cursor := crHourGlass;
+  Try {Busy}
+    PCPortCombo.Clear;
+    SetLength(XBeeList, 0);
+    MacAddr.Text := '';
+    IPAddr.Text := '';
+    IPPort.Text := '';
+    NodeID.Text := '';
+
+    { TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
+
+    if GStack.LocalAddresses.Count = 0 then raise Exception.Create('Error: Not connect to any network!');
+  //  IPv4ToDWord()
+  //  MakeDWordIntoIPv4Address()
+    for IPIdx := 0 to GStack.LocalAddresses.Count-1 do
+      begin {For all host IP addresses (multiple network adapters)}
+  //    GStack.LocalAddresses[Idx];
+
+  //      XBee.RemoteIPAddr := ifthen(BroadcastAddress.Text <> '', BroadcastAddress.Text, '192.168.1.255');
+
+      XBee.RemoteIPAddr := MakeDWordIntoIPv4Address(IPv4ToDWord(GStack.LocalAddresses[IPIdx]) or $000000FF);
+
+      SendDebugMessage('Host: ' + GStack.LocalAddresses[IPIdx] + 'Broadcast: ' +XBee.RemoteIPAddr , True);
+
+      if XBee.GetItem(xbIPAddr, Nums) then
+        begin
+
+        SendDebugMessage('Got IP Address', True);
+        
+        for Idx := 0 to High(Nums) do
+          begin
+          SendDebugMessage('Response #' + Idx.ToString, True);
+          SetLength(XBeeList, Length(XBeeList)+1);
+          PXB := @XBeeList[High(XBeeList)];
+          PXB.CfgChecksum := CSumUnknown;
+          PXB.HostIPAddr := GStack.LocalAddresses[IPIdx];
+          PXB.IPAddr := FormatIPAddr(Nums[Idx]);
+          XBee.RemoteIPAddr := PXB.IPAddr;
+          if XBee.GetItem(xbIPPort, PXB.IPPort) then
+            if XBee.GetItem(xbMacHigh, PXB.MacAddrHigh) then
+              if XBee.GetItem(xbMacLow, PXB.MacAddrLow) then
+                if XBee.GetItem(xbNodeID, PXB.NodeID) then
+                  begin
+                  PXB.PCPort := 'XB' + rightstr(inttostr(PXB.MacAddrLow), 2);
+                  XBIdx := PCPortCombo.Items.IndexOf(PXB.PCPort);
+
+                  SendDebugMessage('Checking for duplicates', True);
+                  
+                  if (XBIdx = -1) or (PXBee(PCPortCombo.Items.Objects[XBIdx]).IPAddr <> PXB.IPAddr) then      {Add only unique XBee modules found; ignore duplicates}
+                    PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB));
+
+                  SendDebugMessage('Done checking for duplicates', True);
+
+
+                  end;
+          end;
+        end;
+      end; {for all host IP addresses}
+      
     if PCPortCombo.Count > 0 then
       begin
       PCPortCombo.Enabled := True;
       PCPortCombo.DropDown;
       end;
-    end;
+      
+  Finally
+    Form1.Cursor := crDefault;
+  End;
 end;
 
 {----------------------------------------------------------------------------------------------------}
