@@ -141,7 +141,7 @@ procedure TForm1.Button1Click(Sender: TObject);
 //  IP : TIDStack;
 begin
 //  for Idx := 0 to GStack.LocalAddresses.Count-1 do showmessage(GStack.LocalAddresses[Idx]);
-  XBee.SetItem(xbIO2State, pinOutHigh);
+  XBee.SetItem(xbIO2Mode, pinOutHigh);
 //  caption := inttostr(XBee.UDPRoundTrip);
 //  IP := TIDStack.Create;
 //  IP.NewInstance;
@@ -153,7 +153,7 @@ end;
 
 procedure TForm1.Button2Click(Sender: TObject);
 begin
-  XBee.SetItem(xbIO2State, pinOutLow);
+  XBee.SetItem(xbIO2Mode, pinOutLow);
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -341,7 +341,7 @@ begin
       for i := 0 to high(InitCallFrame) do inc(Checksum, InitCallFrame[i]);
 
       {Initialize Progress Bar to proper size}
-      InitializeProgress(9 + TotalPackets);
+      InitializeProgress(8 + TotalPackets);
 
       {Begin download process}
       if not XBee.ConnectSerialUDP then
@@ -362,22 +362,21 @@ begin
 
           try {Connecting...}
             {(Enforce XBee Configuration and...) Generate reset signal, then wait for serial transfer window}
-            UpdateProgress(0, 'Generating reset signal');
+            UpdateProgress(0, 'Connecting');
             GenerateResetSignal;
 
 //      SetLength(TxBuf, 1);
 //      TxBuf[0] := 0;
 //      XBee.SendUDP(TxBuf, False);
 
-            IndySleep(190);
+//            IndySleep(190);   Timing handled by flow control now
 
             SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending handshake and loader image', True);
 
-            {Send initial packet and wait for serial transfer time + 120 ms}
-            UpdateProgress(+1, 'Connecting');
+            {Send initial packet and wait for 200 ms (reset period) + serial transfer time + 20 ms (to position timing templates)}
             if not XBee.SendUDP(TxBuf, True, False) then                                                  {Send Connect and Loader packet}
               raise EHardDownload.Create('Error: Can not send connection request!');
-            IndySleep(Length(TxBuf)*10 div InitialBaud + 120);
+            IndySleep(200 + Trunc(Length(TxBuf)*10 / InitialBaud * 1000) + 20);
 
             SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending timing templates', True);
 
@@ -387,7 +386,7 @@ begin
             FillChar(TxBuf[0], XBee.MaxDataSize, $F9);
             if not XBee.SendUDP(TxBuf, True, False) then                                                  {Send timing template packet}
               raise EHardDownload.Create('Error: Can not request connection response!');
-            IndySleep(Length(TxBuf)*10 div InitialBaud);
+            IndySleep(Trunc(Length(TxBuf)*10 / InitialBaud * 1000));
 
             { TODO : Revisit handshake receive loop to check for all possibilities and how they are handled. }
             repeat {Flush receive buffer and get handshake response}
@@ -676,7 +675,7 @@ procedure TForm1.GenerateResetSignal;
 begin
 { TODO : Enhance GenerateResetSignal for errors. }
   if EnforceXBeeConfiguration then
-    if not XBee.SetItem(xbOutputState, $0000) then            {Start reset pulse}
+    if not XBee.SetItem(xbOutputState, $0010) then            {Start reset pulse (low) and serial hold (high)}
       raise Exception.Create('Error Generating Reset Signal');
 end;
 
@@ -715,13 +714,17 @@ begin
     Validate(xbSerialIP, SerialUDP, False);                                                  {    Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
     { TODO : Figure out how to set xbIPDestination. }
     Validate(xbIPDestination, $FFFFFFFF { $C0A80188 } );                                     {    Ensure Serial-to-IP destination is us (our IP)}
-    Validate(xbIO2State, pinOutHigh);                                                        {    Ensure I/O is set to output high}
     Validate(xbOutputMask, $7FFF);                                                           {    Ensure output mask is proper (default, in this case)}
-    Validate(xbIO2Timer, 1);                                                                 {    Ensure DIO2's timer is set to 100 ms}
+    Validate(xbRTSFLow, pinEnabled);                                                         {    Ensure RTS flow pin is enabled (input)}
+    Validate(xbIO4Mode, pinOutLow);                                                          {    Ensure serial hold pin is set to output low}
+    Validate(xbIO2Mode, pinOutHigh);                                                         {    Ensure reset pin is set to output high}
+    Validate(xbIO4Timer, 2);                                                                 {    Ensure serial hold pin's timer is set to 200 ms}
+    Validate(xbIO2Timer, 1);                                                                 {    Ensure reset pin's timer is set to 100 ms}
     Validate(xbSerialMode, TransparentMode {APIwoEscapeMode} {APIwEscapeMode}, False);       {    Ensure Serial Mode is transparent [WRITE DISABLED DUE TO FIRMWARE BUG]}
-    Validate(xbSerialBaud, Baud115200);                                                      {    Ensure baud rate is 115,200 bps}
+    Validate(xbSerialBaud, InitialBaud);                                                     {    Ensure baud rate is set to initial speed}
     Validate(xbSerialParity, ParityNone);                                                    {    Ensure parity is none}
     Validate(xbSerialStopBits, StopBits1);                                                   {    Ensure stop bits is 1}
+    Validate(xbPacketingTimeout, 3);                                                         {    Ensure packetization timout is 3 character times}
     XBee.GetItem(xbChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum);              {    Record new configuration checksum}
     Result := True;
     end;

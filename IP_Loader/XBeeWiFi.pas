@@ -22,34 +22,39 @@ uses
 type
   {Define XBee WiFi's udp commands}
   {IMPORTANT: Do not rearrange, append, or delete from this list without similarly modifying the ATCmd constant array}
-  xbCommand = (xbData, xbMacHigh, xbMacLow, xbSSID, xbIPAddr, xbIPMask, xbIPGateway, xbIPPort, xbIPDestination, xbNodeID, xbMaxRFPayload, xbIO2State,
-               xbOutputMask, xbOutputState, xbIO2Timer, xbSerialMode, xbSerialBaud, xbSerialParity, xbSerialStopBits, xbSerialIP, xbChecksum);
+  xbCommand = (xbData, xbMacHigh, xbMacLow, xbSSID, xbIPAddr, xbIPMask, xbIPGateway, xbIPPort, xbIPDestination, xbNodeID, xbMaxRFPayload, xbPacketingTimeout,
+               xbIO2Mode, xbIO4Mode, xbOutputMask, xbOutputState, xbIO2Timer, xbIO4Timer, xbSerialMode, xbSerialBaud, xbSerialParity, xbSerialStopBits,
+               xbRTSFlow, xbSerialIP, xbChecksum);
 
 const
   {Define XBee WiFi's AT commands}
   ATCmd : array[low(xbCommand)..high(xbCommand)] of Word =
     ({NOTES: [R] - read only, [R/W] = read/write, [s] - string, [b] - binary number, [sb] - string or binary number}
-    {xbData}            $0000,                        {[Wb] write data stream}
-    {xbMacHigh}         Byte('S') + Byte('H') shl 8,  {[Rb] XBee's Mac Address (highest 16-bits)}
-    {xbMacLow}          Byte('S') + Byte('L') shl 8,  {[Rb] XBee's Mac Address (lowest 32-bits)}
-    {xbSSID}            Byte('I') + Byte('D') shl 8,  {[Rs/Ws] SSID (0 to 31 printable ASCII characters)}
-    {xbIPAddr}          Byte('M') + Byte('Y') shl 8,  {[Rb*/Wsb] XBee's IP Address (32-bits; IPv4); *Read-only in DHCP mode}
-    {xbIPMask}          Byte('M') + Byte('K') shl 8,  {[Rb*/Wsb] XBee's IP Mask (32-bits); *Read-only in DHCP mode}
-    {xbIPGateway}       Byte('G') + Byte('W') shl 8,  {[Rb*/Wsb] XBee's IP Gateway (32-bits); *Read-only in DHCP mode}
-    {xbIPPort}          Byte('C') + Byte('0') shl 8,  {[Rb/Wb] Xbee's UDP/IP Port (16-bits)}
-    {xbIPDestination}   Byte('D') + Byte('L') shl 8,  {[Rb/Wsb] Xbee's serial-to-IP destination address (32-bits; IPv4)}
-    {xbNodeID}          Byte('N') + Byte('I') shl 8,  {[Rs/Ws] Friendly node identifier string (20 printable ASCII characters)}
-    {xbMaxRFPayload}    Byte('N') + Byte('P') shl 8,  {[Rb] Maximum RF Payload (16-bits; in bytes)}
-    {xbIO2State}        Byte('D') + Byte('2') shl 8,  {[Rb/Wb] Designated reset pin (3-bits; 0=Disabled, 1=SPI_CLK, 2=Analog input, 3=Digital input, 4=Digital output, 5=Digital output)}
-    {xbOutputMask}      Byte('O') + Byte('M') shl 8,  {[Rb/Wb] Output mask for all I/O pins (each 1=output pin, each 0=input pin) (15-bits on TH, 20-bits on SMT)}
-    {xbOutputState}     Byte('I') + Byte('O') shl 8,  {[Rb/Wb] Output state for all I/O pins (each 1=high, each 0=low) (15-bits on TH, 20-bits on SMT).  Period affected by updIO2Timer}
-    {xbIO2Timer}        Byte('T') + Byte('2') shl 8,  {[Rb/Wb] I/O 2 state timer (100 ms units; $0..$1770)}
-    {xbSerialMode}      Byte('A') + Byte('P') shl 8,  {[Rb/Wb] Serial mode (0=Transparent, 1=API wo/Escapes, 2=API w/Escapes)}
-    {xbSerialBaud}      Byte('B') + Byte('D') shl 8,  {[Rb/Wb] serial baud rate ($1=2400, $2=4800, $3=9600, $4=19200, $5=38400, $6=57600, $7=115200, $8=230400, $9=460800, $A=921600)}
-    {xbSerialParity}    Byte('N') + Byte('B') shl 8,  {[Rb/Wb] serial parity ($0=none, $1=even, $2=odd)}
-    {xbSerialStopBits}  Byte('S') + Byte('B') shl 8,  {[Rb/Wb] serial stop bits ($0=one stop bit, $1=two stop bits)}
-    {xbSerialIP}        Byte('I') + Byte('P') shl 8,  {[Rb/Wb] Protocol for serial service (0=UDP, 1=TCP)}
-    {xbChecksum}        Byte('C') + Byte('K') shl 8   {[Rb] current configuration checksum (16-bits)}
+    {xbData}              $0000,                        {[Wb] write data stream}
+    {xbMacHigh}           Byte('S') + Byte('H') shl 8,  {[Rb] XBee's Mac Address (highest 16-bits)}
+    {xbMacLow}            Byte('S') + Byte('L') shl 8,  {[Rb] XBee's Mac Address (lowest 32-bits)}
+    {xbSSID}              Byte('I') + Byte('D') shl 8,  {[Rs/Ws] SSID (0 to 31 printable ASCII characters)}
+    {xbIPAddr}            Byte('M') + Byte('Y') shl 8,  {[Rb*/Wsb] XBee's IP Address (32-bits; IPv4); *Read-only in DHCP mode}
+    {xbIPMask}            Byte('M') + Byte('K') shl 8,  {[Rb*/Wsb] XBee's IP Mask (32-bits); *Read-only in DHCP mode}
+    {xbIPGateway}         Byte('G') + Byte('W') shl 8,  {[Rb*/Wsb] XBee's IP Gateway (32-bits); *Read-only in DHCP mode}
+    {xbIPPort}            Byte('C') + Byte('0') shl 8,  {[Rb/Wb] Xbee's UDP/IP Port (16-bits)}
+    {xbIPDestination}     Byte('D') + Byte('L') shl 8,  {[Rb/Wsb] Xbee's serial-to-IP destination address (32-bits; IPv4)}
+    {xbNodeID}            Byte('N') + Byte('I') shl 8,  {[Rs/Ws] Friendly node identifier string (20 printable ASCII characters)}
+    {xbMaxRFPayload}      Byte('N') + Byte('P') shl 8,  {[Rb] Maximum RF Payload (16-bits; in bytes)}
+    {xbPacketingTimeout}  Byte('R') + Byte('O') shl 8,  {[Rb/Wb] Inter-character silence time that triggers packetization (8-bits; in character times)}
+    {xbIO2Mode}           Byte('D') + Byte('2') shl 8,  {[Rb/Wb] Designated reset pin (3-bits; 0=Disabled, 1=SPI_CLK, 2=Analog input, 3=Digital input, 4=Digital output low, 5=Digital output high)}
+    {xbIO4Mode}           Byte('D') + Byte('4') shl 8,  {[Rb/Wb] Designated serial hold pin (3-bits; 0=Disabled, 1=SPI_MOSI, 2=<undefined>, 3=Digital input, 4=Digital output low, 5=Digital output high)}
+    {xbOutputMask}        Byte('O') + Byte('M') shl 8,  {[Rb/Wb] Output mask for all I/O pins (each 1=output pin, each 0=input pin) (15-bits on TH, 20-bits on SMT)}
+    {xbOutputState}       Byte('I') + Byte('O') shl 8,  {[Rb/Wb] Output state for all I/O pins (each 1=high, each 0=low) (15-bits on TH, 20-bits on SMT).  Period affected by updIO2Timer}
+    {xbIO2Timer}          Byte('T') + Byte('2') shl 8,  {[Rb/Wb] I/O 2 state timer (100 ms units; $0..$1770)}
+    {xbIO4Timer}          Byte('T') + Byte('4') shl 8,  {[Rb/Wb] I/O 4 state timer (100 ms units; $0..$1770)}
+    {xbSerialMode}        Byte('A') + Byte('P') shl 8,  {[Rb/Wb] Serial mode (0=Transparent, 1=API wo/Escapes, 2=API w/Escapes)}
+    {xbSerialBaud}        Byte('B') + Byte('D') shl 8,  {[Rb/Wb] serial baud rate ($1=2400, $2=4800, $3=9600, $4=19200, $5=38400, $6=57600, $7=115200, $8=230400, $9=460800, $A=921600)}
+    {xbSerialParity}      Byte('N') + Byte('B') shl 8,  {[Rb/Wb] serial parity ($0=none, $1=even, $2=odd)}
+    {xbSerialStopBits}    Byte('S') + Byte('B') shl 8,  {[Rb/Wb] serial stop bits ($0=one stop bit, $1=two stop bits)}
+    {xbRTSFlow}           Byte('D') + Byte('6') shl 8,  {[Rb/Wb] RTS flow control pin (3-bits; 0=Disabled, 1=RTS Flow Control, 2=<undefined>, 3=Digital input, 4=Digital output low, 5=Digital output high)}
+    {xbSerialIP}          Byte('I') + Byte('P') shl 8,  {[Rb/Wb] Protocol for serial service (0=UDP, 1=TCP)}
+    {xbChecksum}          Byte('C') + Byte('K') shl 8   {[Rb] current configuration checksum (16-bits)}
     );
 
   {Set of XBee Commands that take string parameters only (instead of numeric parameters)}
@@ -189,6 +194,10 @@ const
   APIwoEscapeMode = $01;
   APIwEscapeMode  = $02;
   {--I/O--}
+  pinDisabled     = $00;
+  pinEnabled      = $01;
+  pinAnalog       = $02;
+  pinInput        = $03;
   pinOutLow       = $04;
   pinOutHigh      = $05;
   {--Serial--}

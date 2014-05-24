@@ -10,10 +10,16 @@ THINGS TO DO
   * Propeller Protocol
   * Prompts
 
-* Check variation in Reset-to-Image-Stream delays over distance
+* Explore finalization setting, to restore at end of programming cycle
 
-* Review and test (if necessary) connecting to serial service via UDP first, before sending the first API-based Serial stream, to see if the XBee
-  automatically responds to the proper IP and port.  If so, this could eliminate the need to set the Destination IP attribute.
+* Improve Identification
+  * Make host check every available adapter and network
+  * Make it assume 255.255.255.0 as the subnet mask
+  * Have it store the IP address that matches the network where an XBee was identified, with the identification information
+    * It can use that IP address to set the XBee's Destination Address 
+  * Improve timeout issue.  Determine why host has trouble identifying first few times; is it a firewall issue?
+
+* Check variation in Reset-to-Image-Stream delays over distance
 
 * If host receives no "Ready" signal, start image transmission anyway as there's a good chance of recovery
 * Determine why I can't connect from host machine
@@ -35,9 +41,7 @@ THINGS TO DO
   * Adding Wi-Fi Protected Setup mode (to hardware?)
   * Recording and restoring previous settings when done
     * This may be simpler with a single command, if there is one.
-  * Could use I/O pin to instantiate flow control for a certain amount of time during reset,
-    this way we can time serial output's start in relation to reset better.
-
+  * Resetting XBee I/O pin configuration to a disabled state after download?
 
 
 THINGS DONE
@@ -77,6 +81,11 @@ THINGS DONE
 * If host receives no final ACK, handle gracefully
 * Increase final baud rate to fastest possible
   * Test extensively
+* Review and test (if necessary) connecting to serial service via UDP first, before sending the first API-based Serial stream, to see if the XBee
+  automatically responds to the proper IP and port.  If so, this could eliminate the need to set the Destination IP attribute.
+  * Tested, it does not seem to make a difference.
+* Use I/O pin to instantiate flow control for a certain amount of time during reset, this way we can time serial output's start in relation to reset better.
+  * Used I/O pin 4 connected to I/O pin 6 (RTS) and enabled RTS flow control feature.
 
 
 * First Try:
