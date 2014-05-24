@@ -24,7 +24,7 @@ type
   {IMPORTANT: Do not rearrange, append, or delete from this list without similarly modifying the ATCmd constant array}
   xbCommand = (xbData, xbMacHigh, xbMacLow, xbSSID, xbIPAddr, xbIPMask, xbIPGateway, xbIPPort, xbIPDestination, xbNodeID, xbMaxRFPayload, xbPacketingTimeout,
                xbIO2Mode, xbIO4Mode, xbOutputMask, xbOutputState, xbIO2Timer, xbIO4Timer, xbSerialMode, xbSerialBaud, xbSerialParity, xbSerialStopBits,
-               xbRTSFlow, xbSerialIP, xbChecksum);
+               xbRTSFlow, xbSerialIP, xbFirmwareVer, xbHardwareVer, xbHardwareSeries, xbChecksum);
 
 const
   {Define XBee WiFi's AT commands}
@@ -54,6 +54,9 @@ const
     {xbSerialStopBits}    Byte('S') + Byte('B') shl 8,  {[Rb/Wb] serial stop bits ($0=one stop bit, $1=two stop bits)}
     {xbRTSFlow}           Byte('D') + Byte('6') shl 8,  {[Rb/Wb] RTS flow control pin (3-bits; 0=Disabled, 1=RTS Flow Control, 2=<undefined>, 3=Digital input, 4=Digital output low, 5=Digital output high)}
     {xbSerialIP}          Byte('I') + Byte('P') shl 8,  {[Rb/Wb] Protocol for serial service (0=UDP, 1=TCP)}
+    {xbFirmwareVer}       Byte('V') + Byte('R') shl 8,  {[Rb] Firmware version.  Nibbles ABCD; ABC = major release, D = minor release.  B = 0 (standard release), B > 0 (variant release) (16-bits)}
+    {xbHardwareVer}       Byte('H') + Byte('V') shl 8,  {[Rb] Hardware version.  Nibbles ABCD; AB = module type, CD = revision (16-bits)}
+    {xbHardwareSeries}    Byte('H') + Byte('S') shl 8,  {[Rb] Hardware series. (16-bits?)}
     {xbChecksum}          Byte('C') + Byte('K') shl 8   {[Rb] current configuration checksum (16-bits)}
     );
 

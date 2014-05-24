@@ -160,8 +160,9 @@ end;
 
 procedure TForm1.IdentifyButtonClick(Sender: TObject);
 var
-  Idx  : Cardinal;
-  Nums : TSimpleNumberList;
+  Idx   : Cardinal;
+  XBIdx : Integer;
+  Nums  : TSimpleNumberList;
   PXB   : PXBee;
 begin
   PCPortCombo.Clear;
@@ -187,7 +188,9 @@ begin
             if XBee.GetItem(xbNodeID, PXB.NodeID) then
               begin
               PXB.PCPort := 'XB' + rightstr(inttostr(PXB.MacAddrLow), 2);
-              PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB));
+              XBIdx := PCPortCombo.Items.IndexOf(PXB.PCPort);
+              if (XBIdx = -1) or (PXBee(PCPortCombo.Items.Objects[XBIdx]).IPAddr <> PXB.IPAddr) then      {Add only unique XBee modules found; ignore duplicates}
+                PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB));
               end;
       end;
     if PCPortCombo.Count > 0 then

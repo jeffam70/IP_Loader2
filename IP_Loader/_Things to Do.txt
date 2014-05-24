@@ -86,7 +86,8 @@ THINGS DONE
   * Tested, it does not seem to make a difference.
 * Use I/O pin to instantiate flow control for a certain amount of time during reset, this way we can time serial output's start in relation to reset better.
   * Used I/O pin 4 connected to I/O pin 6 (RTS) and enabled RTS flow control feature.
-
+* Improve Identification
+  * Enhanced host to ignore duplicate XBee modules.  Sometimes two are identified that happen to be the same one.
 
 * First Try:
   * Dropped UDP Packets
