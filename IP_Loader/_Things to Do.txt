@@ -13,10 +13,6 @@ THINGS TO DO
 * Explore finalization setting, to restore at end of programming cycle
 
 * Improve Identification
-  * Make host check every available adapter and network
-  * Make it assume 255.255.255.0 as the subnet mask
-  * Have it store the IP address that matches the network where an XBee was identified, with the identification information
-    * It can use that IP address to set the XBee's Destination Address 
   * Improve timeout issue.  Determine why host has trouble identifying first few times; is it a firewall issue?
 
 * Check variation in Reset-to-Image-Stream delays over distance
@@ -88,6 +84,11 @@ THINGS DONE
   * Used I/O pin 4 connected to I/O pin 6 (RTS) and enabled RTS flow control feature.
 * Improve Identification
   * Enhanced host to ignore duplicate XBee modules.  Sometimes two are identified that happen to be the same one.
+  * Make host check every available adapter and network
+  * Make it assume 255.255.255.0 as the subnet mask
+  * Have it store the IP address that matches the network where an XBee was identified, with the identification information
+    * It can use that IP address to set the XBee's Destination Address 
+
 
 * First Try:
   * Dropped UDP Packets

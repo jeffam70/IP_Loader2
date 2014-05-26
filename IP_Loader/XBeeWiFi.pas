@@ -763,6 +763,7 @@ begin
         end;
       dec(TxCount);
       Result := ((RequiredRx >= PacketAck + ord(FPTxBuf.CommandID <> DataCommand)*CommandRsp) and (Status = 0));
+      if (not Result) and (TxCount > 0) then IndySleep(FMaxUDPRoundTrip);
     until Result or (TxCount = 0);
     {Adjust Result if AutoRetry is False}
     Result := Result or not AutoRetry;

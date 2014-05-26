@@ -138,17 +138,8 @@ end;
 {----------------------------------------------------------------------------------------------------}
 
 procedure TForm1.Button1Click(Sender: TObject);
-//var
-//  Idx : Integer;
-//  IP : TIDStack;
 begin
-//  for Idx := 0 to GStack.LocalAddresses.Count-1 do showmessage(GStack.LocalAddresses[Idx]);
   XBee.SetItem(xbIO2Mode, pinOutHigh);
-//  caption := inttostr(XBee.UDPRoundTrip);
-//  IP := TIDStack.Create;
-//  IP.NewInstance;
-//  IPAddr.Text := IP.LocalAddress;
-//  IP.Free;
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -180,13 +171,8 @@ begin
     { TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
 
     if GStack.LocalAddresses.Count = 0 then raise Exception.Create('Error: Not connect to any network!');
-  //  IPv4ToDWord()
-  //  MakeDWordIntoIPv4Address()
     for IPIdx := 0 to GStack.LocalAddresses.Count-1 do
       begin {For all host IP addresses (multiple network adapters)}
-  //    GStack.LocalAddresses[Idx];
-
-  //      XBee.RemoteIPAddr := ifthen(BroadcastAddress.Text <> '', BroadcastAddress.Text, '192.168.1.255');
 
       XBee.RemoteIPAddr := MakeDWordIntoIPv4Address(IPv4ToDWord(GStack.LocalAddresses[IPIdx]) or $000000FF);
 
@@ -693,8 +679,11 @@ end;
 {----------------------------------------------------------------------------------------------------}
 
 procedure TForm1.PCPortComboChange(Sender: TObject);
+{XBee Wi-Fi selected; configure to communicate with it}
 begin
+  {Note our IP address used to access it; used later to set it's destination IP for serial to Wi-Fi communcation back to us}
   HostIPAddr := IPv4ToDWord(XBeeList[PCPortCombo.Selected.Index].HostIPAddr);
+  {Update information fields}
   IPAddr.Text := XBeeList[PCPortCombo.Selected.Index].IPAddr;
   XBee.RemoteIPAddr := IPAddr.Text;
   IPPort.Text := inttostr(XBeeList[PCPortCombo.Selected.Index].IPPort);
@@ -753,7 +742,6 @@ begin
   if not Result then                                                                         {  If not...}
     begin
     Validate(xbSerialIP, SerialUDP, False);                                                  {    Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
-    { TODO : Figure out how to set xbIPDestination. }
     Validate(xbIPDestination, HostIPAddr);                                                   {    Ensure Serial-to-IP destination is us (our IP)}
     Validate(xbOutputMask, $7FFF);                                                           {    Ensure output mask is proper (default, in this case)}
     Validate(xbRTSFLow, pinEnabled);                                                         {    Ensure RTS flow pin is enabled (input)}
