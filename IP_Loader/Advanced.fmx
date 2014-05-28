@@ -1,0 +1,123 @@
+object AdvancedSearchForm: TAdvancedSearchForm
+  Left = 0
+  Top = 0
+  Caption = 'Advanced Search Options'
+  ClientHeight = 407
+  ClientWidth = 249
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [dkDesktop, dkiPhone, dkiPad]
+  OnActivate = FormActivate
+  DesignerMobile = False
+  DesignerWidth = 0
+  DesignerHeight = 0
+  DesignerDeviceName = ''
+  DesignerOrientation = 0
+  DesignerOSVersion = ''
+  object SearchedPanel: TPanel
+    Height = 129.000000000000000000
+    Position.X = 8.000000000000000000
+    Position.Y = 8.000000000000000000
+    Width = 233.000000000000000000
+    TabOrder = 0
+    object LastSearchedLabel: TLabel
+      Height = 17.000000000000000000
+      Position.X = 6.000000000000000000
+      Position.Y = 3.000000000000000000
+      Text = 'Last Searched Network(s):'
+      Width = 217.000000000000000000
+      object LastSearchedListView: TListView
+        ItemAppearanceClassName = 'TCustomizeItemObjects'
+        ItemEditAppearanceClassName = 'TCustomizeItemObjects'
+        HeaderAppearanceClassName = 'TListHeaderObjects'
+        FooterAppearanceClassName = 'TListHeaderObjects'
+        AllowSelection = False
+        DisableFocusEffect = False
+        Height = 96.000000000000000000
+        Position.X = 2.000000000000000000
+        Position.Y = 21.000000000000000000
+        TabOrder = 0
+        Width = 217.000000000000000000
+        ItemAppearance.ItemHeight = 24
+        ItemAppearance.ItemEditHeight = 24
+        CanSwipeDelete = False
+      end
+    end
+    object CustomPanel: TPanel
+      Height = 221.000000000000000000
+      Position.Y = 138.000000000000000000
+      Width = 233.000000000000000000
+      TabOrder = 1
+      object CustomSearchLabel: TLabel
+        Height = 17.000000000000000000
+        Position.X = 6.000000000000000000
+        Position.Y = 6.000000000000000000
+        Text = 'Custom Search List:'
+        Width = 217.000000000000000000
+        object CustomListView: TListView
+          ItemAppearanceClassName = 'TCustomizeItemObjects'
+          ItemEditAppearanceClassName = 'TCustomizeItemObjects'
+          HeaderAppearanceClassName = 'TListHeaderObjects'
+          FooterAppearanceClassName = 'TListHeaderObjects'
+          Height = 96.000000000000000000
+          Position.X = 2.000000000000000000
+          Position.Y = 21.000000000000000000
+          TabOrder = 0
+          Width = 217.000000000000000000
+          ItemAppearance.ItemHeight = 24
+          ItemAppearance.ItemEditHeight = 24
+          CanSwipeDelete = False
+          OnItemClick = CustomListViewItemClick
+        end
+      end
+      object EditLabel: TLabel
+        Height = 17.000000000000000000
+        Position.X = 6.000000000000000000
+        Position.Y = 136.000000000000000000
+        Text = 'Edit Custom Search:'
+        Width = 120.000000000000000000
+        object Edit: TEdit
+          Tag = -1
+          Touch.InteractiveGestures = [igLongTap, igDoubleTap]
+          TabOrder = 0
+          Position.X = 2.000000000000000000
+          Position.Y = 21.000000000000000000
+          Width = 217.000000000000000000
+          Height = 22.000000000000000000
+          KillFocusByReturn = False
+          OnChangeTracking = EditChangeTracking
+          OnKeyDown = EditKeyDown
+        end
+      end
+      object AddButton: TButton
+        Enabled = False
+        Height = 22.000000000000000000
+        Position.X = 9.000000000000000000
+        Position.Y = 187.000000000000000000
+        TabOrder = 2
+        Text = 'Add'
+        Width = 80.000000000000000000
+        OnClick = AddButtonClick
+      end
+      object RemoveButton: TButton
+        Enabled = False
+        Height = 22.000000000000000000
+        Position.X = 144.000000000000000000
+        Position.Y = 187.000000000000000000
+        TabOrder = 3
+        Text = 'Remove'
+        Width = 80.000000000000000000
+        OnClick = RemoveButtonClick
+      end
+    end
+  end
+  object CloseButton: TButton
+    Height = 22.000000000000000000
+    Position.X = 152.000000000000000000
+    Position.Y = 376.000000000000000000
+    TabOrder = 1
+    Text = 'Close'
+    Width = 80.000000000000000000
+    OnClick = CloseButtonClick
+  end
+end

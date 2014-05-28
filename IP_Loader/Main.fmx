@@ -3,8 +3,8 @@ object Form1: TForm1
   Top = 0
   BorderStyle = bsSingle
   Caption = 'Form1'
-  ClientHeight = 480
-  ClientWidth = 640
+  ClientHeight = 401
+  ClientWidth = 392
   FormFactor.Width = 320
   FormFactor.Height = 480
   FormFactor.Devices = [dkDesktop, dkiPhone, dkiPad]
@@ -18,98 +18,46 @@ object Form1: TForm1
   DesignerOSVersion = ''
   object IdentifyButton: TButton
     Height = 22.000000000000000000
-    Position.X = 512.000000000000000000
-    Position.Y = 39.000000000000000000
+    Position.X = 272.000000000000000000
+    Position.Y = 16.000000000000000000
     TabOrder = 0
     Text = 'Identify'
-    Width = 73.000000000000000000
+    Width = 65.000000000000000000
     OnClick = IdentifyButtonClick
   end
   object PCPortCombo: TComboBox
     DisableFocusEffect = False
     Enabled = False
     Height = 22.000000000000000000
-    Position.X = 243.000000000000000000
-    Position.Y = 40.000000000000000000
+    ItemIndex = 0
+    Position.X = 99.000000000000000000
+    Position.Y = 16.000000000000000000
     TabOrder = 1
-    Width = 70.000000000000000000
+    Width = 166.000000000000000000
     OnChange = PCPortComboChange
     object PCPortLabel: TLabel
       Height = 17.000000000000000000
-      Position.X = -52.000000000000000000
+      Position.X = -37.000000000000000000
       Position.Y = 2.000000000000000000
-      Text = 'Port/ID:'
-      Width = 57.000000000000000000
+      Text = 'Port:'
+      Width = 37.000000000000000000
     end
-    object NodeID: TEdit
-      Touch.InteractiveGestures = [igLongTap, igDoubleTap]
-      TabOrder = 1
-      ReadOnly = True
-      Position.X = 77.000000000000000000
-      Width = 162.000000000000000000
-      Height = 22.000000000000000000
-      KillFocusByReturn = False
-    end
-  end
-  object IPAddr: TEdit
-    Touch.InteractiveGestures = [igLongTap, igDoubleTap]
-    TabOrder = 2
-    ReadOnly = True
-    Position.X = 346.000000000000000000
-    Position.Y = 72.000000000000000000
-    Width = 89.000000000000000000
-    Height = 22.000000000000000000
-    KillFocusByReturn = False
-    object IPPort: TEdit
-      Touch.InteractiveGestures = [igLongTap, igDoubleTap]
-      TabOrder = 1
-      Position.X = 95.000000000000000000
-      Width = 41.000000000000000000
-      Height = 22.000000000000000000
-      KillFocusByReturn = False
-    end
-    object PortLabel: TLabel
-      Height = 17.000000000000000000
-      Position.X = -239.000000000000000000
-      Position.Y = 2.000000000000000000
-      Text = 'MACAddr/IPAddr/IPPort:'
-      Width = 141.000000000000000000
-    end
-    object MACAddr: TEdit
-      Touch.InteractiveGestures = [igLongTap, igDoubleTap]
-      TabOrder = 3
-      ReadOnly = True
-      Position.X = -103.000000000000000000
-      Width = 97.000000000000000000
-      Height = 22.000000000000000000
-      KillFocusByReturn = False
+    object TListBoxItem
+      Height = 19.000000000000000000
+      IsSelected = True
+      Text = 'Click "Identify"'
+      Width = 19.000000000000000000
     end
   end
   object OpenDialog: TOpenDialog
     Left = 16
     Top = 8
   end
-  object BroadcastAddress: TEdit
-    Touch.InteractiveGestures = [igLongTap, igDoubleTap]
-    TabOrder = 3
-    Position.X = 242.000000000000000000
-    Position.Y = 8.000000000000000000
-    Width = 89.000000000000000000
-    Height = 22.000000000000000000
-    KillFocusByReturn = False
-    object Label1: TLabel
-      Height = 17.000000000000000000
-      Position.X = -162.000000000000000000
-      Position.Y = 2.000000000000000000
-      Text = 'Broadcast Address (Optional):'
-      Width = 161.000000000000000000
-    end
-  end
   object Progress: TProgressBar
     Height = 20.000000000000000000
     Orientation = orHorizontal
-    Position.X = 142.000000000000000000
-    Position.Y = 384.000000000000000000
+    Position.X = 14.000000000000000000
+    Position.Y = 360.000000000000000000
     Visible = False
     Width = 361.000000000000000000
     object ProgressLabel: TLabel
@@ -128,8 +76,8 @@ object Form1: TForm1
   object ButtonLayout: TLayout
     Enabled = False
     Height = 217.000000000000000000
-    Position.X = 232.000000000000000000
-    Position.Y = 128.000000000000000000
+    Position.X = 104.000000000000000000
+    Position.Y = 104.000000000000000000
     Width = 177.000000000000000000
     object Button1: TButton
       Height = 22.000000000000000000
@@ -176,6 +124,24 @@ object Form1: TForm1
       Text = 'Transmit'
       Width = 129.000000000000000000
       OnClick = TransmitButtonClick
+    end
+  end
+  object XBeeInfo: TEdit
+    Touch.InteractiveGestures = [igLongTap, igDoubleTap]
+    TabOrder = 4
+    ReadOnly = True
+    Position.X = 98.000000000000000000
+    Position.Y = 48.000000000000000000
+    Width = 239.000000000000000000
+    Height = 22.000000000000000000
+    Enabled = False
+    KillFocusByReturn = False
+    object XBeeInfoLabel: TLabel
+      Height = 17.000000000000000000
+      Position.X = -62.000000000000000000
+      Position.Y = 2.000000000000000000
+      Text = 'XBee Info:'
+      Width = 54.000000000000000000
     end
   end
 end

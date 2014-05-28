@@ -4,10 +4,11 @@ interface
 
 uses
   System.SysUtils, System.StrUtils, System.Types, System.UITypes, System.Classes, System.Variants, System.Math,
-  FMX.Types, FMX.Graphics, FMX.Controls, FMX.Forms, FMX.Dialogs, FMX.StdCtrls, FMX.Edit, FMX.ListBox,
+  FMX.Types, FMX.Graphics, FMX.Controls, FMX.Forms, FMX.Dialogs, FMX.StdCtrls, FMX.Edit, FMX.ListBox, FMX.ListView,
   XBeeWiFi,
   IdGlobal, IdBaseComponent, IdComponent, IdRawBase, IdRawClient, IdIcmpClient, IdStack, FMX.Layouts, FMX.Memo,
   Time,
+  Advanced,
   Debug;
 
 type
@@ -29,16 +30,9 @@ type
 
   TForm1 = class(TForm)
     PCPortLabel: TLabel;
-    IPPort: TEdit;
-    PortLabel: TLabel;
     IdentifyButton: TButton;
-    NodeID: TEdit;
     PCPortCombo: TComboBox;
-    IPAddr: TEdit;
-    MACAddr: TEdit;
     OpenDialog: TOpenDialog;
-    BroadcastAddress: TEdit;
-    Label1: TLabel;
     Progress: TProgressBar;
     ProgressLabel: TLabel;
     StatusLabel: TLabel;
@@ -48,6 +42,8 @@ type
     ResetPulseButton: TButton;
     LoadButton: TButton;
     TransmitButton: TButton;
+    XBeeInfoLabel: TLabel;
+    XBeeInfo: TEdit;
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure IdentifyButtonClick(Sender: TObject);
@@ -72,15 +68,16 @@ type
   EHardDownload = class(EDownload);     {Hard download protocol error; fatal}
 
 var
-  Form1             : TForm1;
-  Time              : TTime;
-  HostIPAddr        : Cardinal;         {Our IP Address (can be different if multiple network adapters)}
-  XBee              : TXBeeWiFi;
-  XBeeList          : array of TXBee;   {Dynamic array of XBee Info records}
-  TxBuf             : TIdBytes;         {Transmit packet (resized per packet)}
-  RxBuf             : TIdBytes;         {Receive packet (resized on receive)}
-  FBinImage         : PByteArray;       {A copy of the Propeller Application's binary image (used to generate the download stream)}
-  FBinSize          : Integer;          {The size of FBinImage (in longs)}
+  Form1              : TForm1;
+  Time               : TTime;
+  HostIPAddr         : Cardinal;         {Our IP Address (can be different if multiple network adapters)}
+  XBee               : TXBeeWiFi;
+  XBeeList           : array of TXBee;   {Dynamic array of XBee Info records}
+  TxBuf              : TIdBytes;         {Transmit packet (resized per packet)}
+  RxBuf              : TIdBytes;         {Receive packet (resized on receive)}
+  FBinImage          : PByteArray;       {A copy of the Propeller Application's binary image (used to generate the download stream)}
+  FBinSize           : Integer;          {The size of FBinImage (in longs)}
+  IgnorePCPortChange : Boolean;          {PCPortChange processing flag}
 
 const
   MinSerTimeout     = 100;
@@ -153,73 +150,92 @@ end;
 
 procedure TForm1.IdentifyButtonClick(Sender: TObject);
 var
-  Idx        : Cardinal;
-  IPIdx      : Cardinal;
-  XBIdx      : Integer;
+  IPIdx      : Integer;
   Nums       : TSimpleNumberList;
   PXB        : PXBee;
-begin
-  Form1.Cursor := crHourGlass;
-  Try {Busy}
-    PCPortCombo.Clear;
-    SetLength(XBeeList, 0);
-    MacAddr.Text := '';
-    IPAddr.Text := '';
-    IPPort.Text := '';
-    NodeID.Text := '';
 
-    { TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
+    {----------------}
 
-    if GStack.LocalAddresses.Count = 0 then raise Exception.Create('Error: Not connect to any network!');
-    for IPIdx := 0 to GStack.LocalAddresses.Count-1 do
-      begin {For all host IP addresses (multiple network adapters)}
-
-      XBee.RemoteIPAddr := MakeDWordIntoIPv4Address(IPv4ToDWord(GStack.LocalAddresses[IPIdx]) or $000000FF);
-
-      SendDebugMessage('Host: ' + GStack.LocalAddresses[IPIdx] + 'Broadcast: ' +XBee.RemoteIPAddr , True);
-
+    { TODO : Find resolution for Host IP in cases where we don't know the network. }
+    procedure SendIdentificationPacket(DestinationIP: String; HostIP: String = '255.255.255.255');
+    var
+      Idx        : Cardinal;
+      XBIdx      : Integer;
+    begin
+      XBee.RemoteIPAddr := DestinationIP;
+      AdvancedSearchForm.LastSearchedListView.Items.Add.Text := DestinationIP;
+      SendDebugMessage('Host: ' + HostIP + 'Broadcast: ' + DestinationIP , True);
       if XBee.GetItem(xbIPAddr, Nums) then
         begin
-
         SendDebugMessage('Got IP Address', True);
-        
         for Idx := 0 to High(Nums) do
-          begin
+          begin {Found one or more XBee Wi-Fi modules on the network}
           SendDebugMessage('Response #' + Idx.ToString, True);
+          {Add to XBeeList}
           SetLength(XBeeList, Length(XBeeList)+1);
           PXB := @XBeeList[High(XBeeList)];
           PXB.CfgChecksum := CSumUnknown;
-          PXB.HostIPAddr := GStack.LocalAddresses[IPIdx];
+          PXB.HostIPAddr := HostIP;
           PXB.IPAddr := FormatIPAddr(Nums[Idx]);
+          {Get more identifying information}
           XBee.RemoteIPAddr := PXB.IPAddr;
           if XBee.GetItem(xbIPPort, PXB.IPPort) then
             if XBee.GetItem(xbMacHigh, PXB.MacAddrHigh) then
               if XBee.GetItem(xbMacLow, PXB.MacAddrLow) then
                 if XBee.GetItem(xbNodeID, PXB.NodeID) then
                   begin
-                  PXB.PCPort := 'XB' + rightstr(inttostr(PXB.MacAddrLow), 2);
+                  {Create pseudo-port name}
+                  PXB.PCPort := 'XB-' + ifthen(PXB.NodeID <> '', PXB.NodeID, inttohex(PXB.MacAddrHigh, 4) + inttohex(PXB.MacAddrLow, 8));
                   XBIdx := PCPortCombo.Items.IndexOf(PXB.PCPort);
-
                   SendDebugMessage('Checking for duplicates', True);
-                  
                   if (XBIdx = -1) or (PXBee(PCPortCombo.Items.Objects[XBIdx]).IPAddr <> PXB.IPAddr) then      {Add only unique XBee modules found; ignore duplicates}
-                    PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB));
-
+                    PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB))
+                  else
+                    SetLength(XBeeList, Length(XBeeList)-1);                                                  {Else remove info record}
                   SendDebugMessage('Done checking for duplicates', True);
-
-
                   end;
           end;
         end;
-      end; {for all host IP addresses}
-      
-    if PCPortCombo.Count > 0 then
+    end;
+
+    {----------------}
+
+begin
+  Form1.Cursor := crHourGlass;
+  Try {Busy}
+    IgnorePCPortChange := True;
+    SetLength(XBeeList, 0);
+    AdvancedSearchForm.LastSearchedListView.ClearItems;
+    PCPortCombo.Clear;
+    PCPortCombo.Items.Add('Searching...');
+    PCPortCombo.ItemIndex := 0;
+    Application.ProcessMessages;
+    XBeeInfo.Text := '';
+
+    { TODO : Harden IdentifyButtonClick for interim errors.  Handle gracefully. }
+
+    if (GStack.LocalAddresses.Count = 0) then raise Exception.Create('Error: No network connection!');
+
+    {Search networks}
+    for IPIdx := 0 to GStack.LocalAddresses.Count-1 do {For all host IP addresses (multiple network adapters)}
+      SendIdentificationPacket(MakeDWordIntoIPv4Address(IPv4ToDWord(GStack.LocalAddresses[IPIdx]) or $000000FF), GStack.LocalAddresses[IPIdx]);
+    for IPIdx := 0 to AdvancedSearchForm.CustomListView.Items.Count-1 do {For all custom networks}
+      SendIdentificationPacket(AdvancedSearchForm.CustomListView.Items[IPIdx].Text {, Need to find a host IP here!});
+
+    {Do final updating of PCPortCombo list}
+    if Length(XBeeList) > 0 then
       begin
-      PCPortCombo.Enabled := True;
-      PCPortCombo.DropDown;
-      end;
-      
+      PCPortCombo.Items.Delete(0);
+      PCPortCombo.ItemIndex := -1;
+      end
+    else
+      PCPortCombo.Items[0] := '...None Found';
+    PCPortCombo.Items.Add('<<Advanced Options>>');
+    PCPortCombo.Enabled := True;
+    PCPortCombo.DropDown;
+
   Finally
+    IgnorePCPortChange := False;
     Form1.Cursor := crDefault;
   End;
 end;
@@ -681,16 +697,34 @@ end;
 procedure TForm1.PCPortComboChange(Sender: TObject);
 {XBee Wi-Fi selected; configure to communicate with it}
 begin
-  {Note our IP address used to access it; used later to set it's destination IP for serial to Wi-Fi communcation back to us}
-  HostIPAddr := IPv4ToDWord(XBeeList[PCPortCombo.Selected.Index].HostIPAddr);
-  {Update information fields}
-  IPAddr.Text := XBeeList[PCPortCombo.Selected.Index].IPAddr;
-  XBee.RemoteIPAddr := IPAddr.Text;
-  IPPort.Text := inttostr(XBeeList[PCPortCombo.Selected.Index].IPPort);
-  XBee.RemoteSerialIPPort := XBeeList[PCPortCombo.Selected.Index].IPPort;
-  NodeID.Text := XBeeList[PCPortCombo.Selected.Index].NodeID;
-  MacAddr.Text := FormatMACAddr(XBeeList[PCPortCombo.Selected.Index].MacAddrHigh, XBeeList[PCPortCombo.Selected.Index].MacAddrLow);
-  ButtonLayout.Enabled := True;
+  if IgnorePCPortChange then exit;
+  if (Length(XBeeList) > 0) and (PCPortCombo.Selected.Index < Length(XBeeList)) then
+    begin {If XBee Wi-Fi module item selected}
+    {Note our IP address used to access it; used later to set it's destination IP for serial to Wi-Fi communcation back to us}
+    HostIPAddr := IPv4ToDWord(XBeeList[PCPortCombo.Selected.Index].HostIPAddr);
+    {Update information field}
+    XBeeInfo.Text := '[ ' + FormatMACAddr(XBeeList[PCPortCombo.Selected.Index].MacAddrHigh, XBeeList[PCPortCombo.Selected.Index].MacAddrLow) + ' ]  -  ' +
+                     XBeeList[PCPortCombo.Selected.Index].IPAddr + ' : ' + inttostr(XBeeList[PCPortCombo.Selected.Index].IPPort);
+    {Set remote serial IP port and enable buttons}
+    XBee.RemoteSerialIPPort := XBeeList[PCPortCombo.Selected.Index].IPPort;
+    ButtonLayout.Enabled := True;
+    end
+  else
+    begin {Else, "Advanced Options" selected}
+    {Clear display and disable buttons}
+    HostIPAddr := 0;
+    XBeeInfo.Text := '';
+    XBee.RemoteSerialIPPort := 0;
+    ButtonLayout.Enabled := False;
+    {Remove "None Found..." message, if any}
+    if (Length(XBeeList) = 0) and (PCPortCombo.Count = 2) then PCPortCombo.Items.Delete(0);
+    {Reset combo box selection}
+    IgnorePCPortChange := True;
+    PCPortCombo.ItemIndex := -1;
+    IgnorePCPortChange := False;
+    {Display advanced search options}
+    AdvancedSearchForm.ShowModal;
+    end;
 end;
 
 
@@ -1038,6 +1072,7 @@ end;
 Initialization
   getmem(FBinImage, ImageLimit);
   FBinSize := 0;
+  IgnorePCPortChange := False;
 
 Finalization
   freemem(FBinImage);
