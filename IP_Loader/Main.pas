@@ -72,7 +72,6 @@ var
   Time               : TTime;
   HostIPAddr         : Cardinal;         {Our IP Address (can be different if multiple network adapters)}
   XBee               : TXBeeWiFi;
-  XBeeList           : array of TXBee;   {Dynamic array of XBee Info records}
   TxBuf              : TIdBytes;         {Transmit packet (resized per packet)}
   RxBuf              : TIdBytes;         {Receive packet (resized on receive)}
   FBinImage          : PByteArray;       {A copy of the Propeller Application's binary image (used to generate the download stream)}
@@ -159,8 +158,8 @@ var
     { TODO : Find resolution for Host IP in cases where we don't know the network. }
     procedure SendIdentificationPacket(DestinationIP: String; HostIP: String = '255.255.255.255');
     var
-      Idx        : Cardinal;
-      XBIdx      : Integer;
+      Idx      : Cardinal;
+      ComboIdx : Integer;
     begin
       XBee.RemoteIPAddr := DestinationIP;
       AdvancedSearchForm.LastSearchedListView.Items.Add.Text := DestinationIP;
@@ -168,30 +167,45 @@ var
       if XBee.GetItem(xbIPAddr, Nums) then
         begin
         SendDebugMessage('Got IP Address', True);
+
+        SetLength(Nums, Length(Nums)+1);
+        Nums[High(Nums)] := Nums[High(Nums)-1];
+
         for Idx := 0 to High(Nums) do
           begin {Found one or more XBee Wi-Fi modules on the network}
           SendDebugMessage('Response #' + Idx.ToString, True);
-          {Add to XBeeList}
-          SetLength(XBeeList, Length(XBeeList)+1);
-          PXB := @XBeeList[High(XBeeList)];
-          PXB.CfgChecksum := CSumUnknown;
-          PXB.HostIPAddr := HostIP;
-          PXB.IPAddr := FormatIPAddr(Nums[Idx]);
-          {Get more identifying information}
-          XBee.RemoteIPAddr := PXB.IPAddr;
-          if XBee.GetItem(xbIPPort, PXB.IPPort) then
-            if XBee.GetItem(xbMacHigh, PXB.MacAddrHigh) then
-              if XBee.GetItem(xbMacLow, PXB.MacAddrLow) then
-                if XBee.GetItem(xbNodeID, PXB.NodeID) then
+          {Create XBee Info block and fill with identifying information}
+          New(PXB);
+          PXB^.CfgChecksum := CSumUnknown;
+          PXB^.HostIPAddr := HostIP;
+          PXB^.IPAddr := FormatIPAddr(Nums[Idx]);
+          XBee.RemoteIPAddr := PXB^.IPAddr;
+          if XBee.GetItem(xbIPPort, PXB^.IPPort) then
+            if XBee.GetItem(xbMacHigh, PXB^.MacAddrHigh) then
+              if XBee.GetItem(xbMacLow, PXB^.MacAddrLow) then
+                if XBee.GetItem(xbNodeID, PXB^.NodeID) then
                   begin
                   {Create pseudo-port name}
-                  PXB.PCPort := 'XB-' + ifthen(PXB.NodeID <> '', PXB.NodeID, inttohex(PXB.MacAddrHigh, 4) + inttohex(PXB.MacAddrLow, 8));
-                  XBIdx := PCPortCombo.Items.IndexOf(PXB.PCPort);
-                  SendDebugMessage('Checking for duplicates', True);
-                  if (XBIdx = -1) or (PXBee(PCPortCombo.Items.Objects[XBIdx]).IPAddr <> PXB.IPAddr) then      {Add only unique XBee modules found; ignore duplicates}
-                    PCPortCombo.Items.AddObject(PXB.PCPort, TObject(PXB))
+                  PXB^.PCPort := 'XB-' + ifthen(PXB^.NodeID <> '', PXB^.NodeID, inttohex(PXB^.MacAddrHigh, 4) + inttohex(PXB^.MacAddrLow, 8));
+                  {Check for duplicates}
+                  ComboIdx := PCPortCombo.Items.IndexOf(PXB^.PCPort);
+                  SendDebugMessage('Checking for duplicates.  XBIdx: ' + ComboIdx.ToString, True);
+                  if ComboIdx > -1 then
+                    begin
+                    SendDebugMessage('PCPortCombo Length: ' + PCPortCombo.Count.ToString, True);
+                    SendDebugMessage('Obj Address: ' + PCPortCombo.ListItems[ComboIdx].Tag.ToString, True);
+                    SendDebugMessage('Obj IPAddr: ' + PXBee(PCPortCombo.ListItems[ComboIdx].Tag)^.IPAddr, True);
+                    end;
+                  if (ComboIdx = -1) or (PXBee(PCPortCombo.ListItems[ComboIdx].Tag)^.IPAddr <> PXB^.IPAddr) then    {Add only unique XBee modules found; ignore duplicates}
+                    begin
+                    SendDebugMessage('Adding unique record: ' + Integer(PXB).ToString, True);
+                    PCPortCombo.ListItems[PCPortCombo.Items.Add(PXB^.PCPort)].Tag := NativeInt(PXB);
+                    end
                   else
-                    SetLength(XBeeList, Length(XBeeList)-1);                                                  {Else remove info record}
+                    begin
+                    SendDebugMessage('Deleting record', True);
+                    Dispose(PXB);                                                                                   {Else remove info record}
+                    end;
                   SendDebugMessage('Done checking for duplicates', True);
                   end;
           end;
@@ -202,12 +216,28 @@ var
 
 begin
   Form1.Cursor := crHourGlass;
-  Try {Busy}
+  try {Busy}
     IgnorePCPortChange := True;
-    SetLength(XBeeList, 0);
+    SendDebugMessage('Clearing Last Searched List', True);
     AdvancedSearchForm.LastSearchedListView.ClearItems;
-    PCPortCombo.Clear;
-    PCPortCombo.Items.Add('Searching...');
+    SendDebugMessage('Clearing PC Port List', True);
+    {Clear port list}
+    PCPortCombo.ItemIndex := -1;
+    while PCPortCombo.Count > 0 do
+      begin
+      SendDebugMessage('Size: ' + PCPortCombo.Count.ToString, True);
+      if Pointer(PCPortCombo.ListItems[0].Tag) <> nil then SendDebugMessage('Object <> nil', True) else SendDebugMessage('Object = nil', True);
+      if Pointer(PCPortCombo.ListItems[0].Tag) <> nil then
+        begin
+        Dispose(PXBee(PCPortCombo.ListItems[0].Tag));
+        PCPortCombo.ListItems[0].Tag := NativeInt(nil);
+        end;
+      SendDebugMessage('Deleting Item', True);
+      PCPortCombo.Items.Delete(0);
+      end;
+    {Add "searching" message (and set object to nil)}
+    SendDebugMessage('Adding Search Message to PC Port List', True);
+    PCPortCombo.ListItems[PCPortCombo.Items.Add('Searching...')].Tag := NativeInt(nil);
     PCPortCombo.ItemIndex := 0;
     Application.ProcessMessages;
     XBeeInfo.Text := '';
@@ -217,27 +247,36 @@ begin
     if (GStack.LocalAddresses.Count = 0) then raise Exception.Create('Error: No network connection!');
 
     {Search networks}
+    SendDebugMessage('Searching Network', True);
     for IPIdx := 0 to GStack.LocalAddresses.Count-1 do {For all host IP addresses (multiple network adapters)}
       SendIdentificationPacket(MakeDWordIntoIPv4Address(IPv4ToDWord(GStack.LocalAddresses[IPIdx]) or $000000FF), GStack.LocalAddresses[IPIdx]);
+    SendDebugMessage('Searching Custom Network', True);
     for IPIdx := 0 to AdvancedSearchForm.CustomListView.Items.Count-1 do {For all custom networks}
       SendIdentificationPacket(AdvancedSearchForm.CustomListView.Items[IPIdx].Text {, Need to find a host IP here!});
 
     {Do final updating of PCPortCombo list}
-    if Length(XBeeList) > 0 then
-      begin
-      PCPortCombo.Items.Delete(0);
+    SendDebugMessage('Finalizing PC Port List', True);
+    if PCPortCombo.Count > 1 then
+      begin {Must have found at least one XBee Wi-Fi, delete "searching" item}
       PCPortCombo.ItemIndex := -1;
+      if Pointer(PCPortCombo.ListItems[0].Tag) <> nil then
+        begin
+        Dispose(PXBee(PCPortCombo.ListItems[0].Tag));
+        PCPortCombo.ListItems[0].Tag := NativeInt(nil);
+        end;
+      PCPortCombo.Items.Delete(0);
       end
-    else
+    else    {Else, replace "searching" items with "none found"}
       PCPortCombo.Items[0] := '...None Found';
-    PCPortCombo.Items.Add('<<Advanced Options>>');
+    {Append Advanced Options to end of list}
+    PCPortCombo.ListItems[PCPortCombo.Items.Add('<<Advanced Options>>')].Tag := NativeInt(nil);
     PCPortCombo.Enabled := True;
     PCPortCombo.DropDown;
 
-  Finally
+  finally
     IgnorePCPortChange := False;
     Form1.Cursor := crDefault;
-  End;
+  end;
 end;
 
 {----------------------------------------------------------------------------------------------------}
@@ -696,28 +735,43 @@ end;
 
 procedure TForm1.PCPortComboChange(Sender: TObject);
 {XBee Wi-Fi selected; configure to communicate with it}
+var
+  PXB : PXBee;
 begin
+
   if IgnorePCPortChange then exit;
-  if (Length(XBeeList) > 0) and (PCPortCombo.Selected.Index < Length(XBeeList)) then
+  if (PCPortCombo.ItemIndex > -1) and (Pointer(PCPortCombo.ListItems[PCPortCombo.ItemIndex].Tag) <> nil) then
     begin {If XBee Wi-Fi module item selected}
+    PXB := PXBee(PCPortCombo.ListItems[PCPortCombo.ItemIndex].Tag);
     {Note our IP address used to access it; used later to set it's destination IP for serial to Wi-Fi communcation back to us}
-    HostIPAddr := IPv4ToDWord(XBeeList[PCPortCombo.Selected.Index].HostIPAddr);
+    HostIPAddr := IPv4ToDWord(PXB^.HostIPAddr);
+    SendDebugMessage('Selected HostIPAddr: ' + HostIPAddr.ToString, True);
     {Update information field}
-    XBeeInfo.Text := '[ ' + FormatMACAddr(XBeeList[PCPortCombo.Selected.Index].MacAddrHigh, XBeeList[PCPortCombo.Selected.Index].MacAddrLow) + ' ]  -  ' +
-                     XBeeList[PCPortCombo.Selected.Index].IPAddr + ' : ' + inttostr(XBeeList[PCPortCombo.Selected.Index].IPPort);
-    {Set remote serial IP port and enable buttons}
-    XBee.RemoteSerialIPPort := XBeeList[PCPortCombo.Selected.Index].IPPort;
+    XBeeInfo.Text := '[ ' + FormatMACAddr(PXB^.MacAddrHigh, PXB^.MacAddrLow) + ' ]  -  ' + PXB^.IPAddr + ' : ' + inttostr(PXB^.IPPort);
+    {Set remote serial IP address and port and enable buttons}
+    XBee.RemoteIPAddr := PXB^.IPAddr;
+    XBee.RemoteSerialIPPort := PXB^.IPPort;
+    SendDebugMessage('Selected RemoteSerialIPPort: ' + XBee.RemoteSerialIPPort.ToString, True);
     ButtonLayout.Enabled := True;
     end
   else
-    begin {Else, "Advanced Options" selected}
+    begin {Else, possibly "Advanced Options" selected}
     {Clear display and disable buttons}
     HostIPAddr := 0;
     XBeeInfo.Text := '';
+    XBee.RemoteIPAddr := '';
     XBee.RemoteSerialIPPort := 0;
     ButtonLayout.Enabled := False;
     {Remove "None Found..." message, if any}
-    if (Length(XBeeList) = 0) and (PCPortCombo.Count = 2) then PCPortCombo.Items.Delete(0);
+    if (PCPortCombo.Count = 2) and (Pointer(PCPortCombo.ListItems[0].Tag) <> nil) then
+      begin
+      if Pointer(PCPortCombo.ListItems[0].Tag) <> nil then
+        begin
+        Dispose(PXBee(PCPortCombo.ListItems[0].Tag));
+        PCPortCombo.ListItems[0].Tag := NativeInt(nil);
+        end;
+      PCPortCombo.Items.Delete(0);
+      end;
     {Reset combo box selection}
     IgnorePCPortChange := True;
     PCPortCombo.ItemIndex := -1;
@@ -748,7 +802,8 @@ end;
 function TForm1.EnforceXBeeConfiguration: Boolean;
 {Validate necessary XBee configuration; set attributes if needed.
  Returns True if XBee properly configured; false otherwise.}
-
+var
+  PXB : PXbee;
     {----------------}
 
     function Validate(Attribute: xbCommand; Value: Cardinal; ReadOnly: Boolean = False): Boolean;
@@ -771,24 +826,25 @@ function TForm1.EnforceXBeeConfiguration: Boolean;
 
 begin
 { TODO : Enhance Enforce... to log any error }
-  Result := (XBeeList[PCPortCombo.Selected.Index].CfgChecksum <> CSumUnknown) and            {Is the configuration known and valid?}
-            (Validate(xbChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum, True));
-  if not Result then                                                                         {  If not...}
+  PXB := PXBee(PCPortCombo.ListItems[PCPortCombo.ItemIndex].Tag);
+
+  Result := (PXB^.CfgChecksum <> CSumUnknown) and (Validate(xbChecksum, PXB^.CfgChecksum, True)); {Is the configuration known and valid?}
+  if not Result then                                                                              {If not...}
     begin
-    Validate(xbSerialIP, SerialUDP, False);                                                  {    Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
-    Validate(xbIPDestination, HostIPAddr);                                                   {    Ensure Serial-to-IP destination is us (our IP)}
-    Validate(xbOutputMask, $7FFF);                                                           {    Ensure output mask is proper (default, in this case)}
-    Validate(xbRTSFLow, pinEnabled);                                                         {    Ensure RTS flow pin is enabled (input)}
-    Validate(xbIO4Mode, pinOutLow);                                                          {    Ensure serial hold pin is set to output low}
-    Validate(xbIO2Mode, pinOutHigh);                                                         {    Ensure reset pin is set to output high}
-    Validate(xbIO4Timer, 2);                                                                 {    Ensure serial hold pin's timer is set to 200 ms}
-    Validate(xbIO2Timer, 1);                                                                 {    Ensure reset pin's timer is set to 100 ms}
-    Validate(xbSerialMode, TransparentMode {APIwoEscapeMode} {APIwEscapeMode}, False);       {    Ensure Serial Mode is transparent [WRITE DISABLED DUE TO FIRMWARE BUG]}
-    Validate(xbSerialBaud, InitialBaud);                                                     {    Ensure baud rate is set to initial speed}
-    Validate(xbSerialParity, ParityNone);                                                    {    Ensure parity is none}
-    Validate(xbSerialStopBits, StopBits1);                                                   {    Ensure stop bits is 1}
-    Validate(xbPacketingTimeout, 3);                                                         {    Ensure packetization timout is 3 character times}
-    XBee.GetItem(xbChecksum, XBeeList[PCPortCombo.Selected.Index].CfgChecksum);              {    Record new configuration checksum}
+    Validate(xbSerialIP, SerialUDP, False);                                                       {  Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
+    Validate(xbIPDestination, HostIPAddr);                                                        {  Ensure Serial-to-IP destination is us (our IP)}
+    Validate(xbOutputMask, $7FFF);                                                                {  Ensure output mask is proper (default, in this case)}
+    Validate(xbRTSFLow, pinEnabled);                                                              {  Ensure RTS flow pin is enabled (input)}
+    Validate(xbIO4Mode, pinOutLow);                                                               {  Ensure serial hold pin is set to output low}
+    Validate(xbIO2Mode, pinOutHigh);                                                              {  Ensure reset pin is set to output high}
+    Validate(xbIO4Timer, 2);                                                                      {  Ensure serial hold pin's timer is set to 200 ms}
+    Validate(xbIO2Timer, 1);                                                                      {  Ensure reset pin's timer is set to 100 ms}
+    Validate(xbSerialMode, TransparentMode {APIwoEscapeMode} {APIwEscapeMode}, False);            {  Ensure Serial Mode is transparent [WRITE DISABLED DUE TO FIRMWARE BUG]}
+    Validate(xbSerialBaud, InitialBaud);                                                          {  Ensure baud rate is set to initial speed}
+    Validate(xbSerialParity, ParityNone);                                                         {  Ensure parity is none}
+    Validate(xbSerialStopBits, StopBits1);                                                        {  Ensure stop bits is 1}
+    Validate(xbPacketingTimeout, 3);                                                              {  Ensure packetization timout is 3 character times}
+    XBee.GetItem(xbChecksum, PXB^.CfgChecksum);                                                   {  Record new configuration checksum}
     Result := True;
     end;
 end;
