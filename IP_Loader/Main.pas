@@ -77,6 +77,7 @@ var
   FBinImage          : PByteArray;       {A copy of the Propeller Application's binary image (used to generate the download stream)}
   FBinSize           : Integer;          {The size of FBinImage (in longs)}
   IgnorePCPortChange : Boolean;          {PCPortChange processing flag}
+  XBeeInfoList       : array of TXBee;   {Holds identification information for XBee Wi-Fi modules on network}
 
 const
   MinSerTimeout     = 100;
@@ -167,44 +168,41 @@ var
       if XBee.GetItem(xbIPAddr, Nums) then
         begin
         SendDebugMessage('Got IP Address', True);
-
-        SetLength(Nums, Length(Nums)+1);
-        Nums[High(Nums)] := Nums[High(Nums)-1];
-
         for Idx := 0 to High(Nums) do
           begin {Found one or more XBee Wi-Fi modules on the network}
           SendDebugMessage('Response #' + Idx.ToString, True);
           {Create XBee Info block and fill with identifying information}
-          New(PXB);
-          PXB^.CfgChecksum := CSumUnknown;
-          PXB^.HostIPAddr := HostIP;
-          PXB^.IPAddr := FormatIPAddr(Nums[Idx]);
-          XBee.RemoteIPAddr := PXB^.IPAddr;
-          if XBee.GetItem(xbIPPort, PXB^.IPPort) then
-            if XBee.GetItem(xbMacHigh, PXB^.MacAddrHigh) then
-              if XBee.GetItem(xbMacLow, PXB^.MacAddrLow) then
-                if XBee.GetItem(xbNodeID, PXB^.NodeID) then
+          SetLength(XBeeInfoList, Length(XBeeInfoList)+1);
+          PXB := @XBeeInfoList[High(XBeeInfoList)];
+          PXB.CfgChecksum := CSumUnknown;
+          PXB.HostIPAddr := HostIP;
+          PXB.IPAddr := FormatIPAddr(Nums[Idx]);
+          XBee.RemoteIPAddr := PXB.IPAddr;
+          if XBee.GetItem(xbIPPort, PXB.IPPort) then
+            if XBee.GetItem(xbMacHigh, PXB.MacAddrHigh) then
+              if XBee.GetItem(xbMacLow, PXB.MacAddrLow) then
+                if XBee.GetItem(xbNodeID, PXB.NodeID) then
                   begin
                   {Create pseudo-port name}
-                  PXB^.PCPort := 'XB-' + ifthen(PXB^.NodeID <> '', PXB^.NodeID, inttohex(PXB^.MacAddrHigh, 4) + inttohex(PXB^.MacAddrLow, 8));
+                  PXB.PCPort := 'XB-' + ifthen(PXB.NodeID <> '', PXB.NodeID, inttohex(PXB.MacAddrHigh, 4) + inttohex(PXB.MacAddrLow, 8));
                   {Check for duplicates}
-                  ComboIdx := PCPortCombo.Items.IndexOf(PXB^.PCPort);
+                  ComboIdx := PCPortCombo.Items.IndexOf(PXB.PCPort);
                   SendDebugMessage('Checking for duplicates.  XBIdx: ' + ComboIdx.ToString, True);
                   if ComboIdx > -1 then
                     begin
                     SendDebugMessage('PCPortCombo Length: ' + PCPortCombo.Count.ToString, True);
                     SendDebugMessage('Obj Address: ' + PCPortCombo.ListItems[ComboIdx].Tag.ToString, True);
-                    SendDebugMessage('Obj IPAddr: ' + PXBee(PCPortCombo.ListItems[ComboIdx].Tag)^.IPAddr, True);
+                    SendDebugMessage('Obj IPAddr: ' + XBeeInfoList[PCPortCombo.ListItems[ComboIdx].Tag].IPAddr, True);
                     end;
-                  if (ComboIdx = -1) or (PXBee(PCPortCombo.ListItems[ComboIdx].Tag)^.IPAddr <> PXB^.IPAddr) then    {Add only unique XBee modules found; ignore duplicates}
+                  if (ComboIdx = -1) or (XBeeInfoList[PCPortCombo.ListItems[ComboIdx].Tag].IPAddr <> PXB.IPAddr) then    {Add only unique XBee modules found; ignore duplicates}
                     begin
-                    SendDebugMessage('Adding unique record: ' + Integer(PXB).ToString, True);
-                    PCPortCombo.ListItems[PCPortCombo.Items.Add(PXB^.PCPort)].Tag := NativeInt(PXB);
+                    SendDebugMessage('Adding unique record: ' + High(XBeeInfoList).ToString, True);
+                    PCPortCombo.ListItems[PCPortCombo.Items.Add(PXB.PCPort)].Tag := High(XBeeInfoList);
                     end
                   else
                     begin
                     SendDebugMessage('Deleting record', True);
-                    Dispose(PXB);                                                                                   {Else remove info record}
+                    SetLength(XBeeInfoList, Length(XBeeInfoList)-1);                                              {Else remove info record}
                     end;
                   SendDebugMessage('Done checking for duplicates', True);
                   end;
@@ -216,28 +214,18 @@ var
 
 begin
   Form1.Cursor := crHourGlass;
+  IgnorePCPortChange := True;
   try {Busy}
-    IgnorePCPortChange := True;
     SendDebugMessage('Clearing Last Searched List', True);
     AdvancedSearchForm.LastSearchedListView.ClearItems;
     SendDebugMessage('Clearing PC Port List', True);
     {Clear port list}
     PCPortCombo.ItemIndex := -1;
-    while PCPortCombo.Count > 0 do
-      begin
-      SendDebugMessage('Size: ' + PCPortCombo.Count.ToString, True);
-      if Pointer(PCPortCombo.ListItems[0].Tag) <> nil then SendDebugMessage('Object <> nil', True) else SendDebugMessage('Object = nil', True);
-      if Pointer(PCPortCombo.ListItems[0].Tag) <> nil then
-        begin
-        Dispose(PXBee(PCPortCombo.ListItems[0].Tag));
-        PCPortCombo.ListItems[0].Tag := NativeInt(nil);
-        end;
-      SendDebugMessage('Deleting Item', True);
-      PCPortCombo.Items.Delete(0);
-      end;
+    PCPortCombo.Clear;
+    SetLength(XBeeInfoList, 0);
     {Add "searching" message (and set object to nil)}
     SendDebugMessage('Adding Search Message to PC Port List', True);
-    PCPortCombo.ListItems[PCPortCombo.Items.Add('Searching...')].Tag := NativeInt(nil);
+    PCPortCombo.ListItems[PCPortCombo.Items.Add('Searching...')].Tag := -1;
     PCPortCombo.ItemIndex := 0;
     Application.ProcessMessages;
     XBeeInfo.Text := '';
@@ -259,17 +247,12 @@ begin
     if PCPortCombo.Count > 1 then
       begin {Must have found at least one XBee Wi-Fi, delete "searching" item}
       PCPortCombo.ItemIndex := -1;
-      if Pointer(PCPortCombo.ListItems[0].Tag) <> nil then
-        begin
-        Dispose(PXBee(PCPortCombo.ListItems[0].Tag));
-        PCPortCombo.ListItems[0].Tag := NativeInt(nil);
-        end;
       PCPortCombo.Items.Delete(0);
       end
     else    {Else, replace "searching" items with "none found"}
       PCPortCombo.Items[0] := '...None Found';
     {Append Advanced Options to end of list}
-    PCPortCombo.ListItems[PCPortCombo.Items.Add('<<Advanced Options>>')].Tag := NativeInt(nil);
+    PCPortCombo.ListItems[PCPortCombo.Items.Add('<<Advanced Options>>')].Tag := -1;
     PCPortCombo.Enabled := True;
     PCPortCombo.DropDown;
 
@@ -438,7 +421,7 @@ begin
 
           {Generate initial packet (handshake, timing templates, and Propeller Loader's Download Stream) all stored in TxBuf}
           GenerateLoaderPacket(ltCore, TotalPackets);
-
+//exit;
           SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Connecting...', True);
 
           try {Connecting...}
@@ -446,7 +429,7 @@ begin
             UpdateProgress(0, 'Connecting');
             GenerateResetSignal;
 
-//      SetLength(TxBuf, 1);
+            //      SetLength(TxBuf, 1);
 //      TxBuf[0] := 0;
 //      XBee.SendUDP(TxBuf, False);
 
@@ -738,46 +721,40 @@ procedure TForm1.PCPortComboChange(Sender: TObject);
 var
   PXB : PXBee;
 begin
-
   if IgnorePCPortChange then exit;
-  if (PCPortCombo.ItemIndex > -1) and (Pointer(PCPortCombo.ListItems[PCPortCombo.ItemIndex].Tag) <> nil) then
+  if (PCPortCombo.ItemIndex > -1) and (PCPortCombo.ListItems[PCPortCombo.ItemIndex].Tag > -1) then
     begin {If XBee Wi-Fi module item selected}
-    PXB := PXBee(PCPortCombo.ListItems[PCPortCombo.ItemIndex].Tag);
+    PXB := @XBeeInfoList[PCPortCombo.ListItems[PCPortCombo.ItemIndex].Tag];
     {Note our IP address used to access it; used later to set it's destination IP for serial to Wi-Fi communcation back to us}
-    HostIPAddr := IPv4ToDWord(PXB^.HostIPAddr);
+    HostIPAddr := IPv4ToDWord(PXB.HostIPAddr);
     SendDebugMessage('Selected HostIPAddr: ' + HostIPAddr.ToString, True);
     {Update information field}
-    XBeeInfo.Text := '[ ' + FormatMACAddr(PXB^.MacAddrHigh, PXB^.MacAddrLow) + ' ]  -  ' + PXB^.IPAddr + ' : ' + inttostr(PXB^.IPPort);
+    XBeeInfo.Text := '[ ' + FormatMACAddr(PXB.MacAddrHigh, PXB.MacAddrLow) + ' ]  -  ' + PXB.IPAddr + ' : ' + inttostr(PXB.IPPort);
     {Set remote serial IP address and port and enable buttons}
-    XBee.RemoteIPAddr := PXB^.IPAddr;
-    XBee.RemoteSerialIPPort := PXB^.IPPort;
+    XBee.RemoteIPAddr := PXB.IPAddr;
+    XBee.RemoteSerialIPPort := PXB.IPPort;
     SendDebugMessage('Selected RemoteSerialIPPort: ' + XBee.RemoteSerialIPPort.ToString, True);
     ButtonLayout.Enabled := True;
     end
   else
     begin {Else, possibly "Advanced Options" selected}
-    {Clear display and disable buttons}
-    HostIPAddr := 0;
-    XBeeInfo.Text := '';
-    XBee.RemoteIPAddr := '';
-    XBee.RemoteSerialIPPort := 0;
-    ButtonLayout.Enabled := False;
-    {Remove "None Found..." message, if any}
-    if (PCPortCombo.Count = 2) and (Pointer(PCPortCombo.ListItems[0].Tag) <> nil) then
-      begin
-      if Pointer(PCPortCombo.ListItems[0].Tag) <> nil then
-        begin
-        Dispose(PXBee(PCPortCombo.ListItems[0].Tag));
-        PCPortCombo.ListItems[0].Tag := NativeInt(nil);
-        end;
-      PCPortCombo.Items.Delete(0);
-      end;
-    {Reset combo box selection}
     IgnorePCPortChange := True;
-    PCPortCombo.ItemIndex := -1;
-    IgnorePCPortChange := False;
-    {Display advanced search options}
-    AdvancedSearchForm.ShowModal;
+    try
+      {Clear display and disable buttons}
+      HostIPAddr := 0;
+      XBeeInfo.Text := '';
+      XBee.RemoteIPAddr := '';
+      XBee.RemoteSerialIPPort := 0;
+      ButtonLayout.Enabled := False;
+      {Remove "None Found..." message, if any}
+      if (PCPortCombo.Count = 2) and (PCPortCombo.ListItems[0].Tag = -1) then PCPortCombo.Items.Delete(0);
+      {Reset combo box selection}
+      PCPortCombo.ItemIndex := -1;
+      {Display advanced search options}
+      AdvancedSearchForm.ShowModal;
+    finally
+      IgnorePCPortChange := False;
+    end;
     end;
 end;
 
@@ -826,9 +803,9 @@ var
 
 begin
 { TODO : Enhance Enforce... to log any error }
-  PXB := PXBee(PCPortCombo.ListItems[PCPortCombo.ItemIndex].Tag);
+  PXB := @XBeeInfoList[PCPortCombo.ListItems[PCPortCombo.ItemIndex].Tag];
 
-  Result := (PXB^.CfgChecksum <> CSumUnknown) and (Validate(xbChecksum, PXB^.CfgChecksum, True)); {Is the configuration known and valid?}
+  Result := (PXB.CfgChecksum <> CSumUnknown) and (Validate(xbChecksum, PXB.CfgChecksum, True));   {Is the configuration known and valid?}
   if not Result then                                                                              {If not...}
     begin
     Validate(xbSerialIP, SerialUDP, False);                                                       {  Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
@@ -844,7 +821,7 @@ begin
     Validate(xbSerialParity, ParityNone);                                                         {  Ensure parity is none}
     Validate(xbSerialStopBits, StopBits1);                                                        {  Ensure stop bits is 1}
     Validate(xbPacketingTimeout, 3);                                                              {  Ensure packetization timout is 3 character times}
-    XBee.GetItem(xbChecksum, PXB^.CfgChecksum);                                                   {  Record new configuration checksum}
+    XBee.GetItem(xbChecksum, PXB.CfgChecksum);                                                    {  Record new configuration checksum}
     Result := True;
     end;
 end;
@@ -1060,7 +1037,7 @@ begin
     {Reserve memory for Raw Loader Image}
     RawSize := (high(RawLoaderImage)+1) div 4;
     getmem(LoaderImage, RawSize*4+1);                                                                               {Reserve LoaderImage space for RawLoaderImage data plus 1 extra byte to accommodate generation routine}
-    getmem(LoaderStream, RawSize div 4 * 11);                                                                       {Reserve LoaderStream space for maximum-sized download stream}
+    getmem(LoaderStream, RawSize*4 * 11);                                                                           {Reserve LoaderStream space for maximum-sized download stream}
     try {Reserved memory}
       {Prepare Loader Image}
       Move(RawLoaderImage, LoaderImage[0], RawSize*4);                                                              {Copy raw loader image to LoaderImage (for adjustments and processing)}
@@ -1082,6 +1059,7 @@ begin
       BCount := 0;
       LoaderStreamSize := 0;
       while BCount < (RawSize*4) * 8 do                                                                             {For all bits in data stream...}
+//      while BCount < ((RawSize*4) * 8) div 3 do                                                                             {For all bits in data stream...}
         begin
           BitsIn := Min(5, (RawSize*4) * 8 - BCount);                                                               {  Determine number of bits in current unit to translate; usually 5 bits}
           BValue := ( (LoaderImage[BCount div 8] shr (BCount mod 8)) +                                              {  Extract next translation unit (contiguous bits, LSB first; usually 5 bits)}
@@ -1090,6 +1068,7 @@ begin
           inc(LoaderStreamSize);                                                                                    {  Increment byte index}
           inc(BCount, PDSTx[BValue, BitsIn, dtBits]);                                                               {  Increment bit index (usually 3, 4, or 5 bits, but can be 1 or 2 at end of stream)}
         end;
+//exit;
       {Prepare loader packet; contains handshake and Loader Stream.}
       SetLength(TxBuf, Length(TxHandshake)+11+LoaderStreamSize);                                                    {Set packet size}
 
@@ -1129,6 +1108,7 @@ Initialization
   getmem(FBinImage, ImageLimit);
   FBinSize := 0;
   IgnorePCPortChange := False;
+  SetLength(XBeeInfoList, 0);
 
 Finalization
   freemem(FBinImage);
