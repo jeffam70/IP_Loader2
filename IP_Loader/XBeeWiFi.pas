@@ -16,8 +16,7 @@ uses
 {  mmsystem,}
   FMX.Dialogs,
   IdUDPBase, IdUDPClient, IdBaseComponent, IdComponent, IdTCPConnection, IdTCPClient, IdGlobal, IdStack, IdIOHandler, IdIOHandlerSocket, IdIOHandlerStack,
-  Time,
-  Debug;
+  Time;
 
 type
   {Define XBee WiFi's udp commands}
@@ -563,7 +562,6 @@ begin
   until (Count > 0) or (FTime.Left = 0);
   SetLength(Data, Count);                                                                                    {Receive data and resize buffer to exactly fit it}
   Result := Count > 0;
-  SendDebugMessage('          - ' + ifthen(Result, 'Received ' + Count.ToString + ' byte(s)', 'No response!'), True);
 end;
 
 {----------------------------------------------------------------------------------------------------}
