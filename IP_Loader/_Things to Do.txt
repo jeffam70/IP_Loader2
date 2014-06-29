@@ -1,0 +1,178 @@
+THINGS TO DO
+------------
+
+* Enhance to Identify
+  * Set up proper Broadcast addresses
+  * Use TIdStack.IsIP to check for valid IP address
+
+* Handle errors
+  * TCP connection
+  * Propeller Protocol
+  * Prompts
+
+* Explore finalization setting, to restore at end of programming cycle
+
+* Improve Identification
+  * Improve timeout issue.  Determine why host has trouble identifying first few times; is it a firewall issue?
+
+* Check variation in Reset-to-Image-Stream delays over distance
+
+* If host receives no "Ready" signal, start image transmission anyway as there's a good chance of recovery
+* Determine why I can't connect from host machine
+  * Seems the firewall may have prevented it at first
+  * The IPDestination feature is the problem... need to resolve this (right now it's hard-coded)
+* Enhance so that host can set target bit period according to default/user-specified crystal speed
+  * May need to set clock speed value LONG[0] and clock mode WORD[?]
+* Make exception error reporting dialog
+
+* Download Method
+  * Loader Image
+    * Should support initial and target 9,600/19,200/38,400/57,600/115,200/230,400/460,800/921,600/1,000,000/1,500,000/2,000,000/3,000,000 baud rates
+
+      * Loader acknowledges EEPROM write
+    
+
+* Consider
+  * Adding Soft AP mode negotiation
+  * Adding Wi-Fi Protected Setup mode (to hardware?)
+  * Recording and restoring previous settings when done
+    * This may be simpler with a single command, if there is one.
+  * Resetting XBee I/O pin configuration to a disabled state after download?
+
+
+THINGS DONE
+-----------
+
+* Enhance to request acknowledgements
+* Enhance to randomize header ID
+* Enhance to Identify
+  * Broadcast message
+  * Retrieve and display Node Name
+  * Retrieve and display IP Address
+  * Retrieve and display port number
+  * Retrieve and display MAC address
+  * Create Pseudo-Communication port number
+  * Accept multiple responses
+* Support Configuration Checksum
+* Changed TargetIPx to RemoteIPx
+* Heavily revised to include a Serial TCP, Serial UDP, and Application UDP client and methods for that purpose.
+* All UDP methods use the Application UDP Client except the SendUDP (when told not to) and the ReceiveUDP methods.
+* Appliation UDP Client is bound to $BEE.
+* Calculate round-trip time
+* Could stick to UDP for data because it's less overhead and timing in relation to reset is easer.
+* Why are we not able to set the IP or AP parameters?  There's no response, and then the XBee seems to lock up.
+  * Determined this is because of a firmware bug.
+* Determine how to find local addresses and subnet masks
+  * Local addresses are findable, but subnet masks are curiously hidden
+* Add progress bar
+* Prevent clicking on Transmit during a transmit process
+* Make buttons active only during valid conditions
+* Create soft and hard error cases and handle them properly
+* Check if necessary to have 255 (blank) between 1st and 2nd handshake stream
+  * Yes, without it, the booter doesn't quite have enough time to synch to the first timing template bit.
+* Ensure proper delay after handshake and image
+* Make better timeout method
+  * Test as a separate app
+* Finalize RAM Checksum response sequence
+* If host receives no final ACK, handle gracefully
+* Increase final baud rate to fastest possible
+  * Test extensively
+* Review and test (if necessary) connecting to serial service via UDP first, before sending the first API-based Serial stream, to see if the XBee
+  automatically responds to the proper IP and port.  If so, this could eliminate the need to set the Destination IP attribute.
+  * Tested, it does not seem to make a difference.
+* Use I/O pin to instantiate flow control for a certain amount of time during reset, this way we can time serial output's start in relation to reset better.
+  * Used I/O pin 4 connected to I/O pin 6 (RTS) and enabled RTS flow control feature.
+* Improve Identification
+  * Enhanced host to ignore duplicate XBee modules.  Sometimes two are identified that happen to be the same one.
+  * Make host check every available adapter and network
+  * Make it assume 255.255.255.0 as the subnet mask
+  * Have it store the IP address that matches the network where an XBee was identified, with the identification information
+    * It can use that IP address to set the XBee's Destination Address 
+
+
+* First Try:
+  * Dropped UDP Packets
+    * Retransmit a limited number of times
+
+* Download Method
+  * Switch to compressed calibration pulse + handshake + download command + image size + loader image (single packet)
+    * Should support initial 115,200 and final 460800.
+  * Loader Image
+    * Full Propeller Application Written in Propeller Assembly
+      * May need to be last values in image for implementation simplicity
+    * Host sets target bit period value in loader image (before download) according to default/user-specified crystal speed
+      * May need to set clock speed value LONG[0] and clock mode WORD[?]
+    * Handshake:
+      * Uses standard bit encoding (instead of Propeller bit encoding)
+      * Once loader starts, it transmits an acknowledgement to the host
+      * Host receives acknowledgement and switches to target baud rate
+      * Host begins final image transmission
+        * Verified that UDP dumps corrupted packets
+          * No need for CRC in packet wrapper
+    * Final Image Transmission:
+      * Data is in units of 32-bits (longs)
+      * Packetized; image data is encased in a packet wrapper
+        * Packet wrapper leads each packet with a 32-bit Packet Size and a 32-bit Packet ID
+          * Packet ID has dual purpose
+            * it uniquely identifies the packet; every unique packet in the stream has a unique ID (duplicate packets have the same ID)
+            * it indicates how many total packets are in (or left) in the Propeller Application Image
+              * Packet ID count's down to 1.  The host precalculates the total number of required packets as the value for the first packet's Packet ID.
+                New packets use the previous Packet ID - 1.
+      * Each loader-received packet is acknowledged (positively or negatively)
+        * Host retransmits packets that are not acknowledged, or negatively acknowledged
+        * Loader positively acknowledges duplicates, but dumps duplicate data
+        * Loader "may" negatively acknowlege packet and request previous packet (if UDP does't dump corrupted packets; ie: a corrupted acknowledge from before)
+          * Host retransmits requested packet if necessary
+      * Loader acknowledges Application Image (positively or negatively); this is a RAM Checksum response
+
+
+
+* Timing
+  * Try making routine to sleep.
+    * Use Sleep(time), but check time before and afterwards.  If delta_time is not close to time, Sleep again for time-delta_time.
+  * Figure out how to deal with late packet arrival.  Sometimes during Identify, the packets arrive later than the timeout.  Also, during programming, the UDP
+    response is not seen right away.
+
+* Add TCP
+  * To connect
+
+* Find and maintain desired response packet in RxBuf (last) before exiting Get/SetXBee method.
+
+* Add AT commands
+  * to set low pulse time
+  * to set RESn state
+  * to get MAC Address
+  * to set baud rate
+  * to set parity
+  * to set stop bits
+  * to get maximum RF payload
+    * This feature is static, it does not change according to the number of bytes in the XBee's UART
+  * to get IP Mask
+  * to get IP Gateway
+  * Add check for DL (Destination IP) and set it to be host's IP.
+
+* Simplify CmdStream
+
+* Handle errors
+  * Invalid IP Address (255.255.255.255)
+  * No acknowledgement
+  * Dropped UDP Packets
+    * Retransmit a limited number of times
+
+* Handle
+  * String issues in ParameterValue
+  * Zero-termination of Parameter (when receiving)
+
+
+THINGS TO PONDER
+----------------
+
+* Use the form "XB####" in place of a "COM#" to select the desired wireless port to download to.  The #### is based on the last digits of the XBee's MAC address.
+* For boards that include a USB and an XBee socket, replace the USB circuit with one that behaves like an XBee USB Adapter (when and XBee is attached) and like
+  a normal USB connection when not.
+  * This may still have to be a switched mechanism
+    * Can use a 2-position switch to flip between USB and XBee downloading
+    * The switch will activate a simple transistor circuit to mux USB and XBee to Rx, Tx, and RESn.
+      * SN54LV4053A, SN74LV4053A (296-3833-1-ND) Triple 2:1 16TSSOP $0.49 qty 1, $0.31 qty 100, $0.18 qty 1000
+* Update TCP
+  * To allow transmiting similar to UDP
