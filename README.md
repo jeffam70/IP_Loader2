@@ -9,9 +9,9 @@ been tested.
 Project/Folder Description
 --------------------------
 
-  * IP_Loader/ - contains the IP Loader project.  The Main.pas and XBeeWiFi.pas units are the most important for study. 
+  * IP_Loader - contains the IP Loader project.  The Main.pas and XBeeWiFi.pas units are the most important for study. 
     * Loader - contains the IP_Loader.spin source code and binary image for the micro boot loader used by the start of the downloading process.
-  * PropellerImages/ - contains the Spin and Binary example Propeller Applications used during testing of the download process.
+  * PropellerImages - contains the Spin and Binary example Propeller Applications used during testing of the download process.
   * PropellerStream - contains a related project meant to extract the micro boot loader components from the compiled binary image and provide
                       a Delphi array-based representation of those components for pasting into the IP_Loader project's GenerateLoaderPacket
                       method.
