@@ -464,6 +464,8 @@ begin
                 for i := 0 to 124 do if RxBuf[i] <> RxHandshake[i] then
                   raise EHardDownload.Create('Error: Unrecognized response - not a Propeller?');          {Validate handshake response}
                 for i := 125 to 128 do FVersion := (FVersion shr 2 and $3F) or ((RxBuf[i] and $1) shl 6) or ((RxBuf[i] and $20) shl 2); {Parse hardware version}
+                if FVersion <> 1 then
+                  raise EHardDownload.Create('Error: Expected Propeller v1, but found Propeller v' + FVersion.ToString); {Validate hardware version}
                 end;
             {Repeat - Flush receive buffer and get handshake response...}
             until Length(RxBuf) = 129;                                                                    {Loop if not correct (to flush receive buffer of previous data)}
@@ -933,7 +935,8 @@ const
    For speed and compression reasons, this handshake stream has been encoded as tightly as possible into the pattern described below.
 
    The TxHandshake array consists of 209 bytes that are encoded to represent the required '1' and '0' timing template bits, 250 bits representing the
-   lowest bit values of 250 iterations of the Propeller LFSR (seeded with ASCII 'P').}
+   lowest bit values of 250 iterations of the Propeller LFSR (seeded with ASCII 'P'), 250 more timing template bits to receive the Propeller's handshake
+   response, and more to receive the version.}
   TxHandshake : array[0..208] of byte = ($49,                                                              {First timing template ('1' and '0') plus first two bits of handshake ('0' and '1')}
                                          $AA,$52,$A5,$AA,$25,$AA,$D2,$CA,$52,$25,$D2,$D2,$D2,$AA,$49,$92,  {Remaining 248 bits of handshake...}
                                          $C9,$2A,$A5,$25,$4A,$49,$49,$2A,$25,$49,$A5,$4A,$AA,$2A,$A9,$CA,

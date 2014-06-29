@@ -1,13 +1,13 @@
 object Form1: TForm1
   Left = 0
   Top = 0
-  BorderStyle = bsSingle
+  BorderStyle = Single
   Caption = 'Form1'
   ClientHeight = 401
   ClientWidth = 392
   FormFactor.Width = 320
   FormFactor.Height = 480
-  FormFactor.Devices = [dkDesktop, dkiPhone, dkiPad]
+  FormFactor.Devices = [Desktop, iPhone, iPad]
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   DesignerMobile = False
@@ -45,6 +45,7 @@ object Form1: TForm1
     object TListBoxItem
       Height = 19.000000000000000000
       IsSelected = True
+      TabOrder = 0
       Text = 'Click "Identify"'
       Width = 19.000000000000000000
     end
@@ -55,7 +56,7 @@ object Form1: TForm1
   end
   object Progress: TProgressBar
     Height = 20.000000000000000000
-    Orientation = orHorizontal
+    Orientation = Horizontal
     Position.X = 14.000000000000000000
     Position.Y = 360.000000000000000000
     Visible = False
@@ -127,7 +128,7 @@ object Form1: TForm1
     end
   end
   object XBeeInfo: TEdit
-    Touch.InteractiveGestures = [igLongTap, igDoubleTap]
+    Touch.InteractiveGestures = [LongTap, DoubleTap]
     TabOrder = 4
     ReadOnly = True
     Position.X = 98.000000000000000000
@@ -135,7 +136,6 @@ object Form1: TForm1
     Width = 239.000000000000000000
     Height = 22.000000000000000000
     Enabled = False
-    KillFocusByReturn = False
     object XBeeInfoLabel: TLabel
       Height = 17.000000000000000000
       Position.X = -62.000000000000000000
