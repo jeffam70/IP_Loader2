@@ -8,8 +8,7 @@ uses
   XBeeWiFi,
   IdGlobal, IdBaseComponent, IdComponent, IdRawBase, IdRawClient, IdIcmpClient, IdStack, FMX.Layouts, FMX.Memo,
   Time,
-  Advanced,
-  Debug;
+  Advanced;
 
 type
   TLoaderType = (ltCore, ltVerifyRAM, ltProgramEEPROM, ltLaunchStart, ltLaunchFinal);
@@ -164,13 +163,10 @@ var
     begin
       XBee.RemoteIPAddr := DestinationIP;
       AdvancedSearchForm.LastSearchedListView.Items.Add.Text := DestinationIP;
-      SendDebugMessage('Host: ' + HostIP + 'Broadcast: ' + DestinationIP , True);
       if XBee.GetItem(xbIPAddr, Nums) then
         begin
-        SendDebugMessage('Got IP Address', True);
         for Idx := 0 to High(Nums) do
           begin {Found one or more XBee Wi-Fi modules on the network}
-          SendDebugMessage('Response #' + Idx.ToString, True);
           {Create XBee Info block and fill with identifying information}
           SetLength(XBeeInfoList, Length(XBeeInfoList)+1);
           PXB := @XBeeInfoList[High(XBeeInfoList)];
@@ -187,24 +183,12 @@ var
                   PXB.PCPort := 'XB-' + ifthen(PXB.NodeID <> '', PXB.NodeID, inttohex(PXB.MacAddrHigh, 4) + inttohex(PXB.MacAddrLow, 8));
                   {Check for duplicates}
                   ComboIdx := PCPortCombo.Items.IndexOf(PXB.PCPort);
-                  SendDebugMessage('Checking for duplicates.  XBIdx: ' + ComboIdx.ToString, True);
-                  if ComboIdx > -1 then
-                    begin
-                    SendDebugMessage('PCPortCombo Length: ' + PCPortCombo.Count.ToString, True);
-                    SendDebugMessage('Obj Address: ' + PCPortCombo.ListItems[ComboIdx].Tag.ToString, True);
-                    SendDebugMessage('Obj IPAddr: ' + XBeeInfoList[PCPortCombo.ListItems[ComboIdx].Tag].IPAddr, True);
-                    end;
                   if (ComboIdx = -1) or (XBeeInfoList[PCPortCombo.ListItems[ComboIdx].Tag].IPAddr <> PXB.IPAddr) then    {Add only unique XBee modules found; ignore duplicates}
-                    begin
-                    SendDebugMessage('Adding unique record: ' + High(XBeeInfoList).ToString, True);
-                    PCPortCombo.ListItems[PCPortCombo.Items.Add(PXB.PCPort)].Tag := High(XBeeInfoList);
-                    end
+                    PCPortCombo.ListItems[PCPortCombo.Items.Add(PXB.PCPort)].Tag := High(XBeeInfoList)
                   else
                     begin
-                    SendDebugMessage('Deleting record', True);
                     SetLength(XBeeInfoList, Length(XBeeInfoList)-1);                                              {Else remove info record}
                     end;
-                  SendDebugMessage('Done checking for duplicates', True);
                   end;
           end;
         end;
@@ -216,15 +200,12 @@ begin
   Form1.Cursor := crHourGlass;
   IgnorePCPortChange := True;
   try {Busy}
-    SendDebugMessage('Clearing Last Searched List', True);
     AdvancedSearchForm.LastSearchedListView.ClearItems;
-    SendDebugMessage('Clearing PC Port List', True);
     {Clear port list}
     PCPortCombo.ItemIndex := -1;
     PCPortCombo.Clear;
     SetLength(XBeeInfoList, 0);
     {Add "searching" message (and set object to nil)}
-    SendDebugMessage('Adding Search Message to PC Port List', True);
     PCPortCombo.ListItems[PCPortCombo.Items.Add('Searching...')].Tag := -1;
     PCPortCombo.ItemIndex := 0;
     Application.ProcessMessages;
@@ -235,15 +216,12 @@ begin
     if (GStack.LocalAddresses.Count = 0) then raise Exception.Create('Error: No network connection!');
 
     {Search networks}
-    SendDebugMessage('Searching Network', True);
     for IPIdx := 0 to GStack.LocalAddresses.Count-1 do {For all host IP addresses (multiple network adapters)}
       SendIdentificationPacket(MakeDWordIntoIPv4Address(IPv4ToDWord(GStack.LocalAddresses[IPIdx]) or $000000FF), GStack.LocalAddresses[IPIdx]);
-    SendDebugMessage('Searching Custom Network', True);
     for IPIdx := 0 to AdvancedSearchForm.CustomListView.Items.Count-1 do {For all custom networks}
       SendIdentificationPacket(AdvancedSearchForm.CustomListView.Items[IPIdx].Text {, Need to find a host IP here!});
 
     {Do final updating of PCPortCombo list}
-    SendDebugMessage('Finalizing PC Port List', True);
     if PCPortCombo.Count > 1 then
       begin {Must have found at least one XBee Wi-Fi, delete "searching" item}
       PCPortCombo.ItemIndex := -1;
@@ -302,7 +280,6 @@ const
    {Returns serial timeout adjusted for recent communication delays; minimum MinSerTimeout ms, maximum SerTimeout ms}
    begin
      Result := Max(MinSerTimeout, Min(XBee.UDPMaxRoundTrip*DynamicWaitFactor, SerTimeout));
-     SendDebugMessage('          - MaxRoundTrip: ' + XBee.UDPMaxRoundTrip.ToString+ ' DynamicSerTimeout: ' + Result.ToString, True);
    end;
 
    {----------------}
@@ -358,20 +335,12 @@ const
      Retry := 3;
      repeat {(Re)Transmit packet}                                                           {  Send application image packet, get acknowledgement, retransmit as necessary}
        if Retry < 3 then UpdateProgress(-1);
-
        UpdateProgress(+1);
-
-       SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' Transmitting packet ' + PacketID.ToString, True);
-
        Time.Left(Trunc((Length(TxBuf)*10/FinalBaud)*1000));                                 {    Mark required Tx time}
        if not XBee.SendUDP(TxBuf, True, False) then
          raise EHardDownload.Create('Error: Can not transmit packet!');
-
-       SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for packet acknowledgement', True);
-
        Acknowledged := XBee.ReceiveUDP(RxBuf, DynamicSerTimeout) and (Length(RxBuf) = 4);   {    Wait for positive/negative acknowledgement, or timeout}
        RemainingTxTime := Time.Left;                                                        {    Check remaining time to transmit (should be 0 ms)}
-       if RemainingTxTime > 0 then SendDebugMessage('          - ERROR: Remaining Tx Time: ' + RemainingTxTime.ToString, True);
        dec(Retry);                                                                          {  Loop and retransmit until timely non-retransmit acknowledgement received, or retry count exhausted}
      {Repeat - (Re)Transmit packet...}
      { TODO : Revisit phase variance timing trap }
@@ -418,32 +387,16 @@ begin
         Retry := 3;
         repeat {Connecting Propeller}                                                                     {Try connecting up to 3 times}
           UpdateProgress(pReset);
-
           {Generate initial packet (handshake, timing templates, and Propeller Loader's Download Stream) all stored in TxBuf}
           GenerateLoaderPacket(ltCore, TotalPackets);
-//exit;
-          SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Connecting...', True);
-
           try {Connecting...}
             {(Enforce XBee Configuration and...) Generate reset signal, then wait for serial transfer window}
             UpdateProgress(0, 'Connecting');
             GenerateResetSignal;
-
-            //      SetLength(TxBuf, 1);
-//      TxBuf[0] := 0;
-//      XBee.SendUDP(TxBuf, False);
-
-//            IndySleep(190);   Timing handled by flow control now
-
-            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending handshake and loader image', True);
-
             {Send initial packet and wait for 200 ms (reset period) + serial transfer time + 20 ms (to position timing templates)}
             if not XBee.SendUDP(TxBuf, True, False) then                                                  {Send Connect and Loader packet}
               raise EHardDownload.Create('Error: Can not send connection request!');
             IndySleep(200 + Trunc(Length(TxBuf)*10 / InitialBaud * 1000) + 20);
-
-            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Sending timing templates', True);
-
             {Prep and send timing templates, then wait for serial transfer time}
             UpdateProgress(+1);
             SetLength(TxBuf, XBee.MaxDataSize);
@@ -454,9 +407,6 @@ begin
 
             { TODO : Revisit handshake receive loop to check for all possibilities and how they are handled. }
             repeat {Flush receive buffer and get handshake response}
-
-              SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for handshake', True);
-
               if not XBee.ReceiveUDP(RxBuf, SerTimeout) then                                              {Receive response}
                 raise ESoftDownload.Create('Error: No connection response from Propeller!');
               if Length(RxBuf) = 129 then                                                                 {Validate response}
@@ -469,18 +419,12 @@ begin
                 end;
             {Repeat - Flush receive buffer and get handshake response...}
             until Length(RxBuf) = 129;                                                                    {Loop if not correct (to flush receive buffer of previous data)}
-
-            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for RAM Checksum acknowledgement', True);
-
             {Receive RAM checksum response}
             UpdateProgress(+1);
             if not XBee.ReceiveUDP(RxBuf, DynamicSerTimeout) or (Length(RxBuf) <> 1) then                 {Receive Loader RAM Checksum Response}
               raise ESoftDownload.Create('Error: No loader checksum response!');
             if RxBuf[0] <> $FE then
               raise EHardDownload.Create('Error: Loader failed checksum test');
-
-            SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for "Ready" signal', True);
-
             {Now loader starts up in the Propeller; wait for loader's "ready" signal}
             UpdateProgress(+1);
             Acknowledged := XBee.ReceiveUDP(RxBuf, DynamicSerTimeout);                                    {Receive loader's response}
@@ -501,9 +445,6 @@ begin
           end;
         {repeat - Connecting Propeller...}
         until Acknowledged;
-
-        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Switching to final baud rate', True);
-
         {Switch to final baud rate}
         UpdateProgress(+1, 'Increasing connection speed');
         if not XBee.SetItem(xbSerialBaud, FinalBaud) then
@@ -523,8 +464,6 @@ begin
           dec(PacketID);                                                                         {  Decrement Packet ID (to next packet)}
         {repeat - Transmit target application packets...}
         until PacketID = 0;                                                                      {Loop until done}
-
-        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Waiting for RAM checksum', True);
         UpdateProgress(+1, 'Verifying RAM');
 
         {Send verify RAM command}                                                                {Verify RAM Checksum}
@@ -532,8 +471,6 @@ begin
         if TransmitPacket <> -Checksum then                                                      {Transmit packet (retransmit as necessary)}
           raise EHardDownload.Create('Error: RAM Checksum Failure!');                            {  Error if RAM Checksum differs}
         PacketID := -Checksum;                                                                   {Ready next packet; ID's by checksum now }
-
-        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Requesting Application Launch', True);
         UpdateProgress(+1, 'Requesting Application Launch');
 
         {Send verified/launch command}                                                           {Verified/Launch}
@@ -541,8 +478,6 @@ begin
         if TransmitPacket <> PacketID-1 then                                                     {Transmit packet (retransmit as necessary)}
           raise EHardDownload.Create('Error: communication failed!');                            {  Error if unexpected response}
         dec(PacketID);                                                                           {Ready next packet}
-
-        SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Application Launching', True);
         UpdateProgress(+1, 'Application Launching');
 
         {Send launch command}                                                                    {Verified}
@@ -554,8 +489,6 @@ begin
         XBee.DisconnectSerialUDP;
       end;
     finally {Reserved Memory}
-
-      SendDebugMessage('+' + GetTickDiff(STime, Ticks).ToString + ' - Exiting', True);
       IndySleep(500);
       UpdateProgress(0, '', False);
 
@@ -729,13 +662,11 @@ begin
     PXB := @XBeeInfoList[PCPortCombo.ListItems[PCPortCombo.ItemIndex].Tag];
     {Note our IP address used to access it; used later to set it's destination IP for serial to Wi-Fi communcation back to us}
     HostIPAddr := IPv4ToDWord(PXB.HostIPAddr);
-    SendDebugMessage('Selected HostIPAddr: ' + HostIPAddr.ToString, True);
     {Update information field}
     XBeeInfo.Text := '[ ' + FormatMACAddr(PXB.MacAddrHigh, PXB.MacAddrLow) + ' ]  -  ' + PXB.IPAddr + ' : ' + inttostr(PXB.IPPort);
     {Set remote serial IP address and port and enable buttons}
     XBee.RemoteIPAddr := PXB.IPAddr;
     XBee.RemoteSerialIPPort := PXB.IPPort;
-    SendDebugMessage('Selected RemoteSerialIPPort: ' + XBee.RemoteSerialIPPort.ToString, True);
     ButtonLayout.Enabled := True;
     end
   else
@@ -810,7 +741,7 @@ begin
   Result := (PXB.CfgChecksum <> CSumUnknown) and (Validate(xbChecksum, PXB.CfgChecksum, True));   {Is the configuration known and valid?}
   if not Result then                                                                              {If not...}
     begin
-    Validate(xbSerialIP, SerialUDP, False);                                                       {  Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
+    Validate(xbSerialIP, SerialUDP, True);                                                        {  Ensure XBee's Serial Service uses UDP packets [WRITE DISABLED DUE TO FIRMWARE BUG]}
     Validate(xbIPDestination, HostIPAddr);                                                        {  Ensure Serial-to-IP destination is us (our IP)}
     Validate(xbOutputMask, $7FFF);                                                                {  Ensure output mask is proper (default, in this case)}
     Validate(xbRTSFLow, pinEnabled);                                                              {  Ensure RTS flow pin is enabled (input)}
@@ -818,7 +749,7 @@ begin
     Validate(xbIO2Mode, pinOutHigh);                                                              {  Ensure reset pin is set to output high}
     Validate(xbIO4Timer, 2);                                                                      {  Ensure serial hold pin's timer is set to 200 ms}
     Validate(xbIO2Timer, 1);                                                                      {  Ensure reset pin's timer is set to 100 ms}
-    Validate(xbSerialMode, TransparentMode {APIwoEscapeMode} {APIwEscapeMode}, False);            {  Ensure Serial Mode is transparent [WRITE DISABLED DUE TO FIRMWARE BUG]}
+    Validate(xbSerialMode, TransparentMode {APIwoEscapeMode} {APIwEscapeMode}, True);             {  Ensure Serial Mode is transparent [WRITE DISABLED DUE TO FIRMWARE BUG]}
     Validate(xbSerialBaud, InitialBaud);                                                          {  Ensure baud rate is set to initial speed}
     Validate(xbSerialParity, ParityNone);                                                         {  Ensure parity is none}
     Validate(xbSerialStopBits, StopBits1);                                                        {  Ensure stop bits is 1}
@@ -1074,9 +1005,6 @@ begin
 //exit;
       {Prepare loader packet; contains handshake and Loader Stream.}
       SetLength(TxBuf, Length(TxHandshake)+11+LoaderStreamSize);                                                    {Set packet size}
-
-      SendDebugMessage('**** INITIAL PACKET SIZE : ' + Length(TxBuf).ToString + ' BYTES ****', True);
-
       if Length(TxBuf) > XBee.MaxDataSize then
         raise EHardDownload.Create('Developer Error: Initial packet is too large (' + Length(TxBuf).ToString + ' bytes)!');
       Move(TxHandshake, TxBuf[0], Length(TxHandshake));                                                             {Fill packet with handshake stream (timing template, handshake, and download command (RAM+Run))}
